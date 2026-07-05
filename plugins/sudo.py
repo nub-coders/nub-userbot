@@ -2,6 +2,7 @@ import os
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from tools import *
+from utils.message import Msg
 
 @Client.on_message(filters.command("addsudo", prefixes=HARDCODED_PREFIXES) & filters.me)
 async def add_to_sudo(client, message):
@@ -26,25 +27,13 @@ async def add_to_sudo(client, message):
                 )
                 user = replied_msg.from_user
                 user_name = user.first_name + (f" {user.last_name}" if user.last_name else "")
-                await message.edit(
-                    f"Sudo Granted\n\n"
-                    f"┃ 👤 User: {user_name}\n"
-                    f"┃ 🆔 ID: `{replied_user_id}`\n"
-                    f"┃ ⚡ Can now run sudo commands\n"
-                    f"╰━━━━━━━━━━━━━━━━━━━━╯"
-                )
+                await message.edit(Msg.card("Sudo Access Granted", [f"User: {user_name}", f"ID: `{replied_user_id}`", "Can now run sudo commands"], emoji=Msg.EMOJI_SUCCESS))
                 SUDO[client.me.id].append(replied_user_id)
 
             else:
                 user = replied_msg.from_user
                 user_name = user.first_name + (f" {user.last_name}" if user.last_name else "")
-                await message.edit(
-                    f"Already a Sudoer\n\n"
-                    f"┃ 👤 User: {user_name}\n"
-                    f"┃ 🆔 ID: `{replied_user_id}`\n"
-                    f"┃ ⚡ Already has sudo access\n"
-                    f"╰━━━━━━━━━━━━━━━━━━━━╯"
-                )
+                await message.edit(Msg.card("Already Has Sudo Access", [f"User: {user_name}", f"ID: `{replied_user_id}`", "Already has sudo access"], emoji=Msg.EMOJI_INFO))
         else:
             await message.reply("The replied message is not from a user.")
     else:
@@ -73,21 +62,13 @@ async def add_to_sudo(client, message):
                         upsert=True
                     )
                     await message.edit(
-                        f"Sudo Granted\n\n"
-                        f"┃ 🆔 User ID: `{target_user_id}`\n"
-                        f"┃ ⚡ Can now run sudo commands\n"
-                        f"╰━━━━━━━━━━━━━━━━━━━━╯"
+                        Msg.card("Sudo Access Granted", [f"User ID: `{target_user_id}`", "Can now run sudo commands"], emoji=Msg.EMOJI_SUCCESS)
                     )
 
                     SUDO[client.me.id].append(target_user_id)
 
                 else:
-                    await message.edit(
-                        f"Already a Sudoer\n\n"
-                        f"┃ 🆔 User ID: `{target_user_id}`\n"
-                        f"┃ ⚡ Already has sudo access\n"
-                        f"╰━━━━━━━━━━━━━━━━━━━━╯"
-                    )
+                    await message.edit(Msg.card("Already Has Sudo Access", [f"User ID: `{target_user_id}`", "Already has sudo access"], emoji=Msg.EMOJI_INFO))
             except ValueError:
                 await message.reply("Please provide a valid user ID.")
         else:
@@ -104,11 +85,7 @@ async def remove_from_sudo(client, message):
             # Get current sudo users
             users_data = user_sessions.find_one({"user_id": client.me.id})
             if not users_data:
-                return await message.edit(
-                    f"No Sudoers\n\n"
-                    f"┃ No sudoers have been added yet\n"
-                    f"╰▸ [prefix]addsudo to add users"
-                )
+                return await message.edit(Msg.card("No Sudoers", ["No sudoers have been added yet"], emoji=Msg.EMOJI_INFO, footer="[prefix]addsudo to add users"))
 
             sudoers = users_data.get("sudoers", [])
 
@@ -120,24 +97,12 @@ async def remove_from_sudo(client, message):
                 )
                 user = replied_msg.from_user
                 user_name = user.first_name + (f" {user.last_name}" if user.last_name else "")
-                await message.edit(
-                    f"Sudo Revoked\n\n"
-                    f"┃ 👤 User: {user_name}\n"
-                    f"┃ 🆔 ID: `{replied_user_id}`\n"
-                    f"┃ ⚡ Removed from sudoers\n"
-                    f"╰━━━━━━━━━━━━━━━━━━━━╯"
-                )
+                await message.edit(Msg.card("Sudo Access Revoked", [f"User: {user_name}", f"ID: `{replied_user_id}`", "Removed from sudoers"], emoji=Msg.EMOJI_WARNING))
                 SUDO[client.me.id].remove(replied_user_id)
             else:
                 user = replied_msg.from_user
                 user_name = user.first_name + (f" {user.last_name}" if user.last_name else "")
-                await message.edit(
-                    f"Not a Sudoer\n\n"
-                    f"┃ 👤 User: {user_name}\n"
-                    f"┃ 🆔 ID: `{replied_user_id}`\n"
-                    f"┃ ⚠️ Not in sudoers list\n"
-                    f"╰━━━━━━━━━━━━━━━━━━━━╯"
-                )
+                await message.edit(Msg.card("Not in Sudo List", [f"User: {user_name}", f"ID: `{replied_user_id}`", "Not in sudoers list"], emoji=Msg.EMOJI_INFO))
         else:
             await message.reply("The replied message is not from a user.")
     else:
@@ -161,19 +126,11 @@ async def remove_from_sudo(client, message):
                         {"$pull": {"sudoers": target_user_id}}
                     )
                     await message.edit(
-                        f"Sudo Revoked\n\n"
-                        f"┃ 🆔 User ID: `{target_user_id}`\n"
-                        f"┃ ⚡ Removed from sudoers\n"
-                        f"╰━━━━━━━━━━━━━━━━━━━━╯"
+                        Msg.card("Sudo Access Revoked", [f"User ID: `{target_user_id}`", "Removed from sudoers"], emoji=Msg.EMOJI_WARNING)
                     )
                     SUDO[client.me.id].remove(target_user_id)
                 else:
-                    await message.edit(
-                        f"Not a Sudoer\n\n"
-                        f"┃ 🆔 User ID: `{target_user_id}`\n"
-                        f"┃ ⚠️ Not in sudoers list\n"
-                        f"╰━━━━━━━━━━━━━━━━━━━━╯"
-                    )
+                    await message.edit(Msg.card("Not in Sudo List", [f"User ID: `{target_user_id}`", "Not in sudoers list"], emoji=Msg.EMOJI_INFO))
             except ValueError:
                 await message.reply("Please provide a valid user ID.")
         else:
@@ -194,16 +151,8 @@ async def list_sudoers(client, message):
     sudoers = users_data.get("sudoers", [])
 
     if sudoers:
-        sudoers_list = "\n".join([f"┃ ▸ `{user_id}`" for user_id in sudoers])
-        await message.edit(
-            f"╭━━ 👥 SUDOERS LIST ━━╮\n\n"
-            f"{sudoers_list}\n\n"
-            f"┃ 📊 Total: {len(sudoers)} user(s)\n"
-            f"╰━━━━━━━━━━━━━━━━━━━━╯"
-        )
+        sudoers_lines = [f"`{user_id}`" for user_id in sudoers]
+        sudoers_lines.append(f"Total: {len(sudoers)} user(s)")
+        await message.edit(Msg.card("Sudoers List", sudoers_lines, emoji=Msg.EMOJI_INFO))
     else:
-        await message.edit(
-            f"No Sudoers\n\n"
-            f"┃ List is empty\n"
-            f"╰▸ [prefix]addsudo to add users"
-        )
+        await message.edit(Msg.card("No Sudoers", ["List is empty"], emoji=Msg.EMOJI_INFO, footer="[prefix]addsudo to add users"))

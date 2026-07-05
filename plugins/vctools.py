@@ -1,8 +1,6 @@
 
-import uvloop
 from pyrogram.enums import MessageEntityType
 import json
-import uvloop
 from convopyro import Conversation
 from convopyro import listen_message
 import logging

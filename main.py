@@ -1,62 +1,17 @@
-import uvloop
-from pyrogram.enums import MessageEntityType
-import json
+import os
+import asyncio
 import logging
+
 from pyrogram import Client
 from convopyro import Conversation
-import requests
-import time
-from pyrogram import enums
-import shutil
-import datetime
 from config import *
-import asyncio
-from pyrogram import Client
-import pymongo
-import datetime
-from pyrogram import enums
-from pyrogram.errors import FloodWait
-import asyncio
-import random
-import re
-from pyrogram import Client, filters
-from pyrogram.types import Message
-import datetime
-from pytz import timezone
-import yt_dlp
-from pyrogram.types import Chat
-import asyncio
-import time
-import sys
-import re
-import pyrogram
-from pyrogram import filters,enums
-import os
-from pyrogram import Client
-from pyrogram.errors.exceptions import AuthKeyDuplicated, MessageIdInvalid
-from pyrogram.errors.exceptions import AuthKeyUnregistered
-from pyrogram.errors.exceptions import SessionRevoked,ChatForwardsRestricted
-from pyrogram.errors.exceptions import PeerFlood,UserRestricted,FileReferenceExpired
-from pyrogram.errors.exceptions import UserDeactivatedBan
-from pyrogram.errors.exceptions import PeerIdInvalid
-from pyrogram.errors.exceptions import UserDeactivated
-from pyrogram.enums import ChatType, UserStatus
-from pyrogram import __version__ as versipyro
-import imageio
-import imageio_ffmpeg as ffmpeg
-from PIL import Image
 
-# Telethon imports removed - using Pyrogram only
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s - [%(filename)s:%(lineno)d]'
 )
 
 logger = logging.getLogger("userbot")
-
-ggg = os.getcwd()
-StartTime = time.time()
 
 print("Starting Userbot...")
 
@@ -92,10 +47,12 @@ async def main():
             root="plugins",
             include=[
                 "account",      # Profile management, clone/revert
+                "admin",        # Group admin commands (ban/kick/mute/promote/pin)
                 "afk",          # AFK system with mentions
                 "ai",           # AI chat and commands
                 "antyspam",     # Spam control and protection
                 "clone",        # Profile cloning functionality
+                "dmtools",      # DM spam and raid commands
                 "eval",         # Code evaluation
                 "font",         # Text formatting styles
                 "forward",      # Message forwarding automation
@@ -104,6 +61,7 @@ async def main():
                 "group_tools",  # Group management tools
                 "info",         # User and chat information
                 "music",        # Music related commands
+                "nettools",     # Network tools (ping/tcp/speed/calc)
                 "ocr",          # Optical character recognition
                 "purge",        # Message deletion and purging
                 "react",        # Reaction handling
@@ -141,6 +99,11 @@ async def main():
 
         # Add to clients dict for compatibility
         clients[me.id] = userbot
+
+        # Load sudo users from database
+        user_data = user_sessions.find_one({"user_id": me.id})
+        if user_data and "sudoers" in user_data:
+            SUDO[me.id] = user_data["sudoers"]
 
         # Keep both clients running
         await userbot.idle()

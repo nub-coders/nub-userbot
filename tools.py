@@ -43,6 +43,199 @@ import certifi
 # Initialize magic for file type detection
 mime = magic.Magic(mime=True)
 
+from config import apps, clients, user_sessions, admin_file, SUDO, HARDCODED_PREFIXES, ggg
+
+# Simple TTL cache for user session data
+import threading
+
+class _SessionCache:
+    """In-memory cache for user_sessions.find_one() results with a TTL."""
+    def __init__(self, ttl=30):
+        self._cache = {}
+        self._ttl = ttl
+        self._lock = threading.Lock()
+
+    def get(self, user_id):
+        with self._lock:
+            entry = self._cache.get(user_id)
+            if entry and (time.time() - entry[1]) < self._ttl:
+                return entry[0]
+            return None
+
+    def set(self, user_id, data):
+        with self._lock:
+            self._cache[user_id] = (data, time.time())
+
+    def invalidate(self, user_id=None):
+        with self._lock:
+            if user_id:
+                self._cache.pop(user_id, None)
+            else:
+                self._cache.clear()
+
+_session_cache = _SessionCache(ttl=30)
+
+
+def _get_bot_client():
+    """Get the bot client (apps['app']). Returns None if not started yet."""
+    return apps.get("app")
+
+
+class _BotProxy:
+    """Proxy that forwards attribute access to apps['app'], the bot client.
+    Allows plugins to use `bot.send_message(...)` without importing apps directly.
+    Also provides Telethon-style `bot.edit_message(msg, text)` compatibility."""
+
+    def __getattr__(self, name):
+        client = _get_bot_client()
+        if client is None:
+            raise RuntimeError("Bot client not started yet")
+        if name == "edit_message":
+            return self._edit_message
+        return getattr(client, name)
+
+    async def _edit_message(self, message, text, **kwargs):
+        """Telethon-compatible edit_message(msg, text) -> Pyrogram msg.edit_text(text)"""
+        if hasattr(message, 'edit_text'):
+            return await message.edit_text(text, **kwargs)
+        return await message.edit(text, **kwargs)
+
+
+bot = _BotProxy()
+app = _BotProxy()
+
+
+def is_admin(user_id):
+    """Check if a user_id is the bot owner (exists in clients dict)."""
+    return user_id in clients
+
+
+def is_admin_user(user_id):
+    """Check if a user_id is an owner. Same as is_admin."""
+    return is_admin(user_id)
+
+
+def cached_get_user_data(user_id):
+    """Get user session data with caching to avoid repeated DB queries."""
+    data = _session_cache.get(user_id)
+    if data is not None:
+        return data
+    data = user_sessions.find_one({"user_id": user_id})
+    if data is None:
+        data = {}
+    _session_cache.set(user_id, data)
+    return data
+
+
+def invalidate_session_cache(user_id=None):
+    """Invalidate cache after writes. Call after any user_sessions.update_one/insert_one."""
+    _session_cache.invalidate(user_id)
+
+
+def sudoers_filter():
+    """Filter that matches messages from sudo users."""
+    def func(_, client, message):
+        if not message.from_user:
+            return False
+        sudoers = SUDO.get(client.me.id, [])
+        return message.from_user.id in sudoers
+    return filters.create(func)
+
+
+async def edit_or_reply(message, text, **kwargs):
+    """Edit message if sent by self, otherwise reply."""
+    if message.from_user and message.from_user.is_self:
+        return await message.edit_text(text, **kwargs)
+    return await message.reply(text, **kwargs)
+
+
+def styled_error(text):
+    """Format an error message."""
+    return f"❌ **Error**\n\n⚠️ {text}"
+
+
+def styled_success(text):
+    """Format a success message."""
+    return f"✅ {text}"
+
+
+def can_grant_privilege(promoter_privileges, privilege_name):
+    """Check if the promoter has a specific privilege they can grant."""
+    return getattr(promoter_privileges, privilege_name, False)
+
+
+def styled_help_categories(categories_dict, prefix):
+    """Format help categories overview."""
+    lines = ["📖 **Command Categories**\n"]
+    for cat, cmds in categories_dict.items():
+        if cmds:
+            cmd_list = ", ".join(f"`{prefix}{c}`" for c in cmds[:5])
+            extra = f" +{len(cmds)-5} more" if len(cmds) > 5 else ""
+            lines.append(f"**{cat}**\n┃ {cmd_list}{extra}")
+        else:
+            lines.append(f"**{cat}**")
+    lines.append(f"\n💡 Use `{prefix}help <command>` for details")
+    return "\n".join(lines)
+
+
+def styled_help_card(cmd, desc, usage, example="", note="", flags="", warning=""):
+    """Format a single command help card."""
+    card = f"📖 **{cmd}**\n\n{desc}\n"
+    if usage:
+        card += f"\n**Usage:** `{usage}`"
+    if example:
+        card += f"\n**Example:** `{example}`"
+    if flags:
+        card += f"\n**Flags:** {flags}"
+    if note:
+        card += f"\n💡 {note}"
+    if warning:
+        card += f"\n⚠️ {warning}"
+    return card
+
+
+def update_message_and_entities(text, entities, words_to_remove=None):
+    """Remove command words/flags from text and adjust entity offsets."""
+    if not words_to_remove:
+        return text, entities
+
+    for word in words_to_remove:
+        idx = text.find(word)
+        if idx != -1:
+            text = text[:idx] + text[idx + len(word):]
+            removed_len = len(word)
+            entities = [
+                e for e in entities
+                if not (e.offset >= idx and e.offset < idx + removed_len)
+            ]
+            for e in entities:
+                if e.offset > idx:
+                    e.offset -= removed_len
+
+    text = " ".join(text.split()).strip()
+    parts = text.split(None, 1)
+    if parts:
+        text = parts[1] if len(parts) > 1 else ""
+    return text, entities
+
+
+def sanitize_path(base_dir, filename):
+    """Sanitize a filename to prevent path traversal attacks."""
+    safe_name = os.path.basename(filename)
+    safe_name = re.sub(r'[^\w\s\-.]', '_', safe_name)
+    if not safe_name or safe_name.startswith('.'):
+        safe_name = 'file_' + safe_name
+    full_path = os.path.normpath(os.path.join(base_dir, safe_name))
+    if not full_path.startswith(os.path.normpath(base_dir)):
+        raise ValueError("Path traversal detected")
+    return full_path
+
+
+# Global help registries
+commands = {}
+categories = {}
+games = {}
+
 def get_user(message, text) -> [int, str, None]:
     """Get User From Message"""
     if text is None:
@@ -289,13 +482,10 @@ def creator_only(func):
 
 # Database utilities
 def getuser_data(user_id):
-    user_data = user_sessions.find_one({"user_id": user_id})
-    if not user_data:
-        return {}
-    return user_data
+    return cached_get_user_data(user_id)
 
 def get_user_data(user_id, key):
-    user_data = user_sessions.find_one({"user_id": user_id})
+    user_data = cached_get_user_data(user_id)
     if user_data and key in user_data:
         return user_data[key]
     return None
@@ -309,6 +499,7 @@ def set_gvar(user_id, key, value):
         {"$set": {key: value}},
         upsert=True
     )
+    invalidate_session_cache(user_id)
 
 # Message formatting utilities
 async def format_welcome_message(client, text, chat_id, user_or_chat_name):
@@ -340,17 +531,15 @@ def create_channel_custom_filter():
 
 def crcustom_filter():
     def filte_func(_, client, message):
-         user_data = user_sessions.find_one({"user_id": client.me.id})
+         user_data = cached_get_user_data(client.me.id)
          spam_control = user_data.get('Spam_control', 'True')
          if spam_control == 'False':
-            print("Spam control is off, returning.")
             return False
          white_listed = user_data.get('white_listed', [])
          if not message.from_user:
            return False
          sender_id = message.from_user.id
          if sender_id in white_listed:
-            print("User is whitelisted. Skipping...")
             return False
          return True
     return filters.create(filte_func)
@@ -480,6 +669,34 @@ def get_args(message: Message):
     return list(filter(lambda x: len(x) > 0, split))
 
 
+def get_args_from_caret(message):
+    """Extract arguments from prefixed commands (supports all HARDCODED_PREFIXES)"""
+    if not message.text:
+        return []
+    first_char = message.text[0]
+    if first_char not in HARDCODED_PREFIXES:
+        return []
+    text = message.text[1:]
+    parts = text.split()
+    if len(parts) <= 1:
+        return []
+    return parts[1:]
+
+
+def get_command_from_caret(message):
+    """Extract command name from prefixed commands."""
+    if not message.text:
+        return ""
+    first_char = message.text[0]
+    if first_char not in HARDCODED_PREFIXES:
+        return ""
+    text = message.text[1:]
+    parts = text.split()
+    if not parts:
+        return ""
+    return parts[0]
+
+
 async def run_cmd(cmd: str) -> Tuple[str, str, int, int]:
     """Run Commands"""
     args = shlex.split(cmd)
@@ -536,139 +753,76 @@ async def convert_to_image(message, client) -> [None, str]:
     return final_path
 
 
+def get_full_name(user):
+    if not user:
+        return "Unknown"
+    name = user.first_name or ""
+    if user.last_name:
+        name += f" {user.last_name}"
+    return name or "Unknown"
+
+
 def get_reply_text(reply: Message) -> str:
-    return (
-        "📷 Photo" + ("\n" + reply.caption if reply.caption else "")
-        if reply.photo
-        else (
-            get_reply_poll_text(reply.poll)
-            if reply.poll
-            else (
-                "📍 Location"
-                if reply.location or reply.venue
-                else (
-                    "👤 Contact"
-                    if reply.contact
-                    else (
-                        "🖼 GIF"
-                        if reply.animation
-                        else (
-                            "🎧 Music" + get_audio_text(reply.audio)
-                            if reply.audio
-                            else (
-                                "📹 Video"
-                                if reply.video
-                                else (
-                                    "📹 Videomessage"
-                                    if reply.video_note
-                                    else (
-                                        "🎵 Voice"
-                                        if reply.voice
-                                        else (
-                                            (
-                                                reply.sticker.emoji + " "
-                                                if reply.sticker.emoji
-                                                else ""
-                                            )
-                                            + "Sticker"
-                                            if reply.sticker
-                                            else (
-                                                "💾 File " + reply.document.file_name
-                                                if reply.document
-                                                else (
-                                                    "🎮 Game"
-                                                    if reply.game
-                                                    else (
-                                                        "🎮 set new record"
-                                                        if reply.game_high_score
-                                                        else (
-                                                            f"{reply.dice.emoji} - {reply.dice.value}"
-                                                            if reply.dice
-                                                            else (
-                                                                (
-                                                                    "👤 joined the group"
-                                                                    if reply.new_chat_members[
-                                                                        0
-                                                                    ].id
-                                                                    == reply.from_user.id
-                                                                    else "👤 invited %s to the group"
-                                                                    % (
-                                                                        get_full_name(
-                                                                            reply.new_chat_members[
-                                                                                0
-                                                                            ]
-                                                                        )
-                                                                    )
-                                                                )
-                                                                if reply.new_chat_members
-                                                                else (
-                                                                    (
-                                                                        "👤 left the group"
-                                                                        if reply.left_chat_member.id
-                                                                        == reply.from_user.id
-                                                                        else "👤 removed %s"
-                                                                        % (
-                                                                            get_full_name(
-                                                                                reply.left_chat_member
-                                                                            )
-                                                                        )
-                                                                    )
-                                                                    if reply.left_chat_member
-                                                                    else (
-                                                                        f"✏ changed group name to {reply.new_chat_title}"
-                                                                        if reply.new_chat_title
-                                                                        else (
-                                                                            "🖼 changed group photo"
-                                                                            if reply.new_chat_photo
-                                                                            else (
-                                                                                "🖼 removed group photo"
-                                                                                if reply.delete_chat_photo
-                                                                                else (
-                                                                                    "📍 pinned message"
-                                                                                    if reply.pinned_message
-                                                                                    else (
-                                                                                        "🎤 started a new video chat"
-                                                                                        if reply.video_chat_started
-                                                                                        else (
-                                                                                            "🎤 ended the video chat"
-                                                                                            if reply.video_chat_ended
-                                                                                            else (
-                                                                                                "🎤 invited participants to the video chat"
-                                                                                                if reply.video_chat_members_invited
-                                                                                                else (
-                                                                                                    "👥 created the group"
-                                                                                                    if reply.group_chat_created
-                                                                                                    or reply.supergroup_chat_created
-                                                                                                    else (
-                                                                                                        "👥 created the channel"
-                                                                                                        if reply.channel_chat_created
-                                                                                                        else reply.text
-                                                                                                        or "unsupported message"
-                                                                                                    )
-                                                                                                )
-                                                                                            )
-                                                                                        )
-                                                                                    )
-                                                                                )
-                                                                            )
-                                                                        )
-                                                                    )
-                                                                )
-                                                            )
-                                                        )
-                                                    )
-                                                )
-                                            )
-                                        )
-                                    )
-                                )
-                            )
-                        )
-                    )
-                )
-            )
-        )
-    )
+    if reply.photo:
+        return "📷 Photo" + (f"\n{reply.caption}" if reply.caption else "")
+    if reply.poll:
+        q = reply.poll.question if reply.poll else ""
+        return f"📊 Poll: {q}"
+    if reply.location or reply.venue:
+        return "📍 Location"
+    if reply.contact:
+        return "👤 Contact"
+    if reply.animation:
+        return "🖼 GIF"
+    if reply.audio:
+        title = reply.audio.title or "Unknown"
+        performer = reply.audio.performer or ""
+        return f"🎧 Music — {performer} - {title}" if performer else f"🎧 Music — {title}"
+    if reply.video:
+        return "📹 Video"
+    if reply.video_note:
+        return "📹 Videomessage"
+    if reply.voice:
+        return "🎵 Voice"
+    if reply.sticker:
+        emoji = reply.sticker.emoji + " " if reply.sticker.emoji else ""
+        return f"{emoji}Sticker"
+    if reply.document:
+        return f"💾 File {reply.document.file_name}"
+    if reply.game:
+        return "🎮 Game"
+    if reply.game_high_score:
+        return "🎮 set new record"
+    if reply.dice:
+        return f"{reply.dice.emoji} - {reply.dice.value}"
+    if reply.new_chat_members:
+        member = reply.new_chat_members[0]
+        if member.id == reply.from_user.id:
+            return "👤 joined the group"
+        return f"👤 invited {get_full_name(member)} to the group"
+    if reply.left_chat_member:
+        if reply.left_chat_member.id == reply.from_user.id:
+            return "👤 left the group"
+        return f"👤 removed {get_full_name(reply.left_chat_member)}"
+    if reply.new_chat_title:
+        return f"✏ changed group name to {reply.new_chat_title}"
+    if reply.new_chat_photo:
+        return "🖼 changed group photo"
+    if reply.delete_chat_photo:
+        return "🖼 removed group photo"
+    if reply.pinned_message:
+        return "📍 pinned message"
+    if reply.video_chat_started:
+        return "🎤 started a new video chat"
+    if reply.video_chat_ended:
+        return "🎤 ended the video chat"
+    if reply.video_chat_members_invited:
+        return "🎤 invited participants to the video chat"
+    if reply.group_chat_created or reply.supergroup_chat_created:
+        return "👥 created the group"
+    if reply.channel_chat_created:
+        return "👥 created the channel"
+    return reply.text or "unsupported message"
 
 
 

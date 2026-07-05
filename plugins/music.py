@@ -67,9 +67,8 @@ from pytgcalls import idle, PyTgCalls
 from pytgcalls.types import ChatUpdate, AudioQuality, MediaStream, VideoQuality
 from pytgcalls.exceptions import NoActiveGroupCall, NotInCallError
 
-# Telethon removed - using Pyrogram only
-
 from tools import *
+from utils.message import Msg
 from config import *
 
 # Configure the logger
@@ -88,17 +87,6 @@ current_time = datetime.datetime.now()
 logger.info(f"[MUSIC] Plugin loaded at {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
 # Iterate over all sub-directories
-
-def get_user_data(user_id, key):
-    user_data = user_sessions.find_one({"user_id": user_id})
-    if user_data and key in user_data:
-        return user_data[key]
-    return None
-
-
-# Update functions to interact with MongoDB
-def gvarstatus(user_id, key):
-    return get_user_data(user_id, key)
 
 def is_music_on():
     def decorator(func):
@@ -353,8 +341,6 @@ async def play_handler_func(client, message):
     user_dir = f"{ggg}/{session_name}"
     os.makedirs(user_dir, exist_ok=True)
     by = message.from_user
-    HARDCODED_PREFIXES = ["!", "_", "?", "^", "."]
-    # Escape special regex characters and join with |
     escaped_prefixes = '|'.join(re.escape(p) for p in HARDCODED_PREFIXES)
     command_match = re.match(rf"^({escaped_prefixes})(\w+)", message.text or "")
     command = command_match.group(2).lower() if command_match else ""
@@ -385,7 +371,7 @@ async def play_handler_func(client, message):
     current_queue = len(song_queue.get(target_chat_id, [])) if song_queue else 0
 
     massage = await message.reply(
-        f"╭━━ 🔎 SEARCHING ━━╮\n"
+        f"╭━━ {Msg.EMOJI_SEARCH} SEARCHING ━━╮\n"
         f"┃ Finding your track...\n"
         f"╰━━━━━━━━━━━━━━━━━╯"
     )
@@ -442,10 +428,10 @@ async def play_handler_func(client, message):
                     title = doc.file_name or "Telegram Audio"
                     duration = attr.duration
         else:
-            await massage.edit(f"Unsupported media type")
+            await massage.edit(f"{Msg.EMOJI_ERROR} Unsupported media type")
             return await remove_active_chat(client, target_chat_id)
         if not media_type:
-            await massage.edit(f"Unsupported media type")
+            await massage.edit(f"{Msg.EMOJI_ERROR} Unsupported media type")
             return await remove_active_chat(client, target_chat_id)
         # For media messages
         youtube_link = await download_media_with_progress(
@@ -474,7 +460,7 @@ async def play_handler_func(client, message):
         if not youtube_link:
             try:
                 await massage.edit(
-                f"No Results\n\n"
+                f"{Msg.EMOJI_SEARCH} No Results\n\n"
                 f"┃ No matching track found\n"
                 f"╰▸ Try a different search query"
             )
@@ -484,7 +470,7 @@ async def play_handler_func(client, message):
     else:
         try:
             await massage.edit(
-                f"No Query\n\n"
+                f"{Msg.EMOJI_QUESTION} No Query\n\n"
                 f"┃ Please provide a search query\n"
                 f"╰▸ Usage: `[prefix]play <song name>`"
             )
@@ -529,21 +515,20 @@ async def end_handler_func(client, message):
             await remove_active_chat(client, message.chat.id)
             if song_queue and message.chat.id in song_queue:
                 song_queue[message.chat.id].clear()
-            await client.send_message(message.chat.id, 
-f"╭━━ ✅ STREAM ENDED ━━╮\n┃ Queue cleared & call left\n╰━ 👤 {message.from_user.mention()}", reply_to_message_id=message.id)
+            await client.send_message(message.chat.id, Msg.card("Stream Ended", ["Queue cleared and call left.", f"By: {message.from_user.mention()}"], emoji=Msg.EMOJI_SUCCESS), reply_to_message_id=message.id)
             if call_py:
                 await call_py.leave_call(message.chat.id)
             if message.chat.id in playing:
                 playing[message.chat.id].clear()
         else:
-            await client.send_message(message.chat.id, f"╭━━ ⚠️ NO STREAM ━━╮\n┃ Nothing is playing right now\n╰━ 🎧 Use /play to start", reply_to_message_id=message.id)
+            await client.send_message(message.chat.id, Msg.card("No Stream", ["Nothing is playing right now."], emoji=Msg.EMOJI_WARNING, footer="Use /play to start"), reply_to_message_id=message.id)
             await remove_active_chat(client, message.chat.id)
             if call_py:
                 await call_py.leave_call(message.chat.id)
             if message.chat.id in playing:
                 playing[message.chat.id].clear()
     except NotInCallError:
-        await client.send_message(message.chat.id, f"╭━━ ⚠️ NO STREAM ━━╮\n┃ Nothing is playing right now\n╰━ 🎧 Use /play to start", reply_to_message_id=message.id)
+        await client.send_message(message.chat.id, Msg.card("No Stream", ["Nothing is playing right now."], emoji=Msg.EMOJI_WARNING, footer="Use /play to start"), reply_to_message_id=message.id)
         if message.chat.id in playing:
             playing[message.chat.id].clear()
 
@@ -557,7 +542,7 @@ async def skip_handler_func(client, message):
         if song_queue and message.chat.id in song_queue:
             if len(song_queue[message.chat.id]) > 0:
                 next_song = song_queue[message.chat.id].pop(0)
-                await client.send_message(message.chat.id, f"╭━━ ⏭️ SKIPPING ━━╮\n┃ Loading next track...\n╰━ 👤 {message.from_user.mention()}", reply_to_message_id=message.id)
+                await client.send_message(message.chat.id, Msg.card("Skipping", ["Loading next track...", f"By: {message.from_user.mention()}"], emoji=Msg.EMOJI_INFO), reply_to_message_id=message.id)
                 playing[message.chat.id] = next_song
                 try:
                     if call_py:
@@ -569,19 +554,18 @@ async def skip_handler_func(client, message):
                 if call_py:
                     await call_py.leave_call(message.chat.id)
                 await remove_active_chat(client, message.chat.id)
-                await client.send_message(message.chat.id, f"╭━━ ⏭️ SKIPPED ━━╮\n┃ Queue is now empty\n╰━ 👤 {message.from_user.mention()}", reply_to_message_id=message.id)
+                await client.send_message(message.chat.id, Msg.card("Skipped", ["Queue is now empty.", f"By: {message.from_user.mention()}"], emoji=Msg.EMOJI_SUCCESS), reply_to_message_id=message.id)
                 if message.chat.id in playing:
                     playing[message.chat.id].clear()
         else:
             if call_py:
                 await call_py.leave_call(message.chat.id)
             await remove_active_chat(client, message.chat.id)
-            await client.send_message(message.chat.id, 
-                f"╭━━ ⏭️ SKIPPED ━━╮\n┃ Queue is now empty\n╰━ 👤 {message.from_user.mention()}", reply_to_message_id=message.id)
+            await client.send_message(message.chat.id, Msg.card("Skipped", ["Queue is now empty.", f"By: {message.from_user.mention()}"], emoji=Msg.EMOJI_SUCCESS), reply_to_message_id=message.id)
             if message.chat.id in playing:
                 playing[message.chat.id].clear()
     except NotInCallError:
-        await client.send_message(message.chat.id, f"╭━━ ⚠️ NO STREAM ━━╮\n┃ Nothing is playing right now\n╰━ 🎧 Use /play to start", reply_to_message_id=message.id)
+        await client.send_message(message.chat.id, Msg.card("No Stream", ["Nothing is playing right now."], emoji=Msg.EMOJI_WARNING, footer="Use /play to start"), reply_to_message_id=message.id)
         if message.chat.id in playing:
             playing[message.chat.id].clear()
 
@@ -593,11 +577,11 @@ async def pause_handler_func(client, message):
         if await is_active_chat(client, message.chat.id):
             if call_py:
                 await call_py.pause(message.chat.id)
-            await client.send_message(message.chat.id, f"╭━━ ⏸️ PAUSED ━━╮\n┃ Use /resume to continue\n╰━ 👤 {message.from_user.mention()}", reply_to_message_id=message.id)
+            await client.send_message(message.chat.id, Msg.card("Paused", ["Use /resume to continue.", f"By: {message.from_user.mention()}"], emoji=Msg.EMOJI_INFO), reply_to_message_id=message.id)
         else:
-            await client.send_message(message.chat.id, f"╭━━ ⚠️ NO STREAM ━━╮\n┃ Nothing is playing right now\n╰━ 🎧 Use /play to start", reply_to_message_id=message.id)
+            await client.send_message(message.chat.id, Msg.card("No Stream", ["Nothing is playing right now."], emoji=Msg.EMOJI_WARNING, footer="Use /play to start"), reply_to_message_id=message.id)
     except NotInCallError:
-        await client.send_message(message.chat.id, f"╭━━ ⚠️ NO STREAM ━━╮\n┃ Nothing is playing right now\n╰━ 🎧 Use /play to start", reply_to_message_id=message.id)
+        await client.send_message(message.chat.id, Msg.card("No Stream", ["Nothing is playing right now."], emoji=Msg.EMOJI_WARNING, footer="Use /play to start"), reply_to_message_id=message.id)
 
 @Client.on_message(filters.command("resume", prefixes=HARDCODED_PREFIXES))
 @is_music_on()
@@ -607,11 +591,11 @@ async def resume_handler_func(client, message):
         if await is_active_chat(client, message.chat.id):
             if call_py:
                 await call_py.resume(message.chat.id)
-            await client.send_message(message.chat.id, f"╭━━ ▶️ RESUMED ━━╮\n┃ Use /pause to stop\n╰━ 👤 {message.from_user.mention()}", reply_to_message_id=message.id)
+            await client.send_message(message.chat.id, Msg.card("Resumed", ["Use /pause to stop.", f"By: {message.from_user.mention()}"], emoji=Msg.EMOJI_SUCCESS), reply_to_message_id=message.id)
         else:
-            await client.send_message(message.chat.id, f"╭━━ ⚠️ NO STREAM ━━╮\n┃ Nothing is playing right now\n╰━ 🎧 Use /play to start", reply_to_message_id=message.id)
+            await client.send_message(message.chat.id, Msg.card("No Stream", ["Nothing is playing right now."], emoji=Msg.EMOJI_WARNING, footer="Use /play to start"), reply_to_message_id=message.id)
     except NotInCallError:
-        await client.send_message(message.chat.id, f"╭━━ ⚠️ NO STREAM ━━╮\n┃ Nothing is playing right now\n╰━ 🎧 Use /play to start", reply_to_message_id=message.id)
+        await client.send_message(message.chat.id, Msg.card("No Stream", ["Nothing is playing right now."], emoji=Msg.EMOJI_WARNING, footer="Use /play to start"), reply_to_message_id=message.id)
 
 @Client.on_message(filters.command("loop", prefixes=HARDCODED_PREFIXES))
 @is_music_on()
@@ -624,7 +608,7 @@ async def loop_handler_func(client, message):
         if len(command_parts) != 2:
             await client.send_message(
                 message.chat.id,
-                "❌ Please specify the number of loops.\nUsage: /loop <number>", reply_to_message_id=message.id
+                Msg.card("Invalid Loop Command", ["Please specify the number of loops."], emoji=Msg.EMOJI_ERROR, footer="Usage: /loop <number>"), reply_to_message_id=message.id
             )
             return
 
@@ -633,13 +617,13 @@ async def loop_handler_func(client, message):
             if loop_count <= 0 or loop_count > 20:
                 await client.send_message(
                     message.chat.id,
-                    "❌ Loop count must be from 0-20!", reply_to_message_id=message.id
+                    Msg.card("Invalid Loop Count", ["Loop count must be between 1 and 20."], emoji=Msg.EMOJI_ERROR), reply_to_message_id=message.id
                 )
                 return
         except ValueError:
             await client.send_message(
                 message.chat.id,
-                "❌ Please provide a valid number for loops!", reply_to_message_id=message.id
+                Msg.card("Invalid Loop Count", ["Provide a valid number."], emoji=Msg.EMOJI_ERROR), reply_to_message_id=message.id
             )
             return
 
@@ -658,18 +642,18 @@ async def loop_handler_func(client, message):
 
             await client.send_message(
                 message.chat.id,
-                f"{f'Current song will be repeated {loop_count} times!'}\n\nʙʏ: {message.from_user.mention()}", reply_to_message_id=message.id
+                Msg.card("Loop Enabled", [f"Current song will repeat {loop_count} times.", f"By: {message.from_user.mention()}"], emoji=Msg.EMOJI_SUCCESS), reply_to_message_id=message.id
             )
         else:
             await client.send_message(
                 message.chat.id,
-                f"Assistant is not streaming anything!", reply_to_message_id=message.id
+                Msg.card("No Stream", ["Assistant is not streaming anything."], emoji=Msg.EMOJI_WARNING, footer="Use /play to start"), reply_to_message_id=message.id
             )
 
     except Exception as e:
         await client.send_message(
             message.chat.id,
-            f"❌ An error occurred: {str(e)}", reply_to_message_id=message.id
+            Msg.card("Music Error", [f"An error occurred: {str(e)}"], emoji=Msg.EMOJI_ERROR), reply_to_message_id=message.id
         )
 
 # Event handlers for stream end and voice chat events
@@ -682,23 +666,15 @@ async def queue_command(client, message):
     try:
         song_queue = queues.get(f"dic_{client.me.id}")
         if not song_queue or not song_queue.get(message.chat.id):
-            await message.edit(
-                f"╭━━ 📭queue empty ━━╮\n"
-                f"┃ No songs in queue\n"
-                f"╰▸ [prefix]play <song> to add"
-            )
+            await message.edit(Msg.card("Queue Empty", ["No songs in queue."], emoji=Msg.EMOJI_INFO, footer="[prefix]play <song> to add"))
             return
         
         current_queue = song_queue[message.chat.id]
         if not current_queue:
-            await message.edit(
-                f"╭━━ 📭queue empty ━━╮\n"
-                f"┃ No songs in queue\n"
-                f"╰▸ [prefix]play <song> to add"
-            )
+            await message.edit(Msg.card("Queue Empty", ["No songs in queue."], emoji=Msg.EMOJI_INFO, footer="[prefix]play <song> to add"))
             return
         
-        queue_text = f"╭━━ 🎵 MUSIC QUEUE ({len(current_queue)}) ━━╮\n\n"
+        queue_text = f"╭━━ {Msg.EMOJI_MUSIC} MUSIC QUEUE ({len(current_queue)}) ━━╮\n\n"
         for i, song in enumerate(current_queue[:10], 1):  # Show first 10 songs
             title = song.get('title', 'Unknown Title')[:40]
             duration = song.get('duration', '00:00')

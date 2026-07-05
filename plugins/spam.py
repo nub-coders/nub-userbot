@@ -2,7 +2,6 @@
 from pyrogram.enums import MessageEntityType as MET, ChatAction as CA
 from pyrogram.errors.exceptions import PeerFlood, UserRestricted
 from pyrogram.enums import ChatMembersFilter, UserStatus
-from parser import mention_html, mention_markdown
 from config import *
 from tools import *
 
@@ -97,7 +96,12 @@ async def spam(client, message):
        return await message.edit_text("Who the hell are you trying to spam in my owner's/lord's Chat/Group\n\n**Fuck off!!!**")
     if len(message.text.split()) <3 :
        return await bot.send_message(client.me.id, f"**USAGE EXAMPLE:** /spam 5 hello`")
-    amount = int(message.command[1])
+    try:
+        amount = int(message.command[1])
+    except ValueError:
+        return await bot.send_message(client.me.id, "**ERROR:** Count must be a number.")
+    if amount < 1 or amount > 500:
+        return await bot.send_message(client.me.id, "**ERROR:** Count must be between 1 and 500.")
     text = " ".join(message.command[2:])
     spam_type = message.command[0]
 
@@ -175,7 +179,12 @@ async def fastspam(client, message):
        return await message.edit_text("Who the hell are you trying to spam in my owner's/lord's Chat/Group\n\n**Fuck off!!!**")
     if len(message.text.split()) <3 :
        return await bot.send_message(client.me.id, f"**USAGE EXAMPLE:** /spam 5 hello`")
-    amount = int(message.command[1])
+    try:
+        amount = int(message.command[1])
+    except ValueError:
+        return await bot.send_message(client.me.id, "**ERROR:** Count must be a number.")
+    if amount < 1 or amount > 500:
+        return await bot.send_message(client.me.id, "**ERROR:** Count must be between 1 and 500.")
     text = " ".join(message.command[2:])
 
     await message.delete()

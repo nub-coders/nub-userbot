@@ -19,57 +19,18 @@ is_support = filters.create(lambda _, __, message: message.chat.is_support)
 # Custom filter for spam control
 def crcustom_filter():
     def filte_func(_, client, message):
-         user_data = user_sessions.find_one({"user_id": client.me.id})
-         users = user_data.get('users', {})
+         user_data = cached_get_user_data(client.me.id)
          spam_control = user_data.get('Spam_control', 'True')
          if spam_control == 'False':
-            print("Spam control is off, returning.")
             return False
          white_listed = user_data.get('white_listed', [])
          if not message.from_user:
            return False
          sender_id = message.from_user.id
          if sender_id in white_listed:
-            print("User is whitelisted. Skipping...")
             return False
          return True
     return filters.create(filte_func)
-
-async def format_welcome_message(client, text, chat_id, user_or_chat_name):
-    """Helper function to format welcome message with real data"""
-    try:
-        formatted_text = text.replace("{name}", user_or_chat_name)
-        formatted_text = formatted_text.replace("{id}", str(chat_id))
-        formatted_text = formatted_text.replace("{yourname}", f"{client.me.first_name}")
-        return formatted_text
-    except Exception as e:
-        logging.error(f"Error formatting welcome message: {str(e)}")
-        return text  # Return original text if formatting fails
-
-def rename_file(old_name, new_name):
-    try:
-        # Rename the file
-        os.rename(old_name, new_name)
-        
-        # Get the absolute path of the renamed file
-        new_file_path = os.path.abspath(new_name)
-        print(f'File renamed from {old_name} to {new_name}')
-        return new_file_path  # Return the new file location
-    except FileNotFoundError:
-        print(f'The file {old_name} does not exist.')
-    except FileExistsError:
-        print(f'The file {new_name} already exists.')
-    except Exception as e:
-        print(f'An error occurred: {e}')
-
-def get_user_data(user_id, key):
-    user_data = user_sessions.find_one({"user_id": user_id})
-    if user_data and key in user_data:
-        return user_data[key]
-    return None
-
-def gvarstatus(user_id, key):
-    return get_user_data(user_id, key)
 
 @Client.on_message(filters.private & ~filters.me & ~filters.bot & crcustom_filter())
 @retry()

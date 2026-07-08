@@ -12,11 +12,11 @@ API_HASH = os.getenv('API_HASH', '')
 # Optional: Get from https://aistudio.google.com/app/apikey (needed for AI features)
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 
-# Optional: NUBYTDLP API Key for YouTube downloads
-NUBYTDLP_API = os.getenv('NUBYTDLP_API', '')
+# Optional: NUB_YTDLP API Key for YouTube downloads
+NUB_YTDLP_API_KEY = os.getenv('NUB_YTDLP_API_KEY', '')
 
-# NUBYTDLP Base URL configuration
-NUBYTDLP_BASE_URL = os.getenv('NUBYTDLP_BASE_URL', 'http://api.nubcoder.com')
+# NUB_YTDLP Base URL configuration
+NUB_YTDLP_BASE_URL = os.getenv('NUB_YTDLP_BASE_URL', 'http://api.nubcoder.com')
 
 # MongoDB connection (optional)
 MONGO_URI = os.getenv('MONGO_URI', '')

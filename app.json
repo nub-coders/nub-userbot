@@ -45,12 +45,12 @@
       "description": "The username of your userbot account (without @) to use in menus",
       "required": false
     },
-    "NUBYTDLP_API": {
-      "description": "Optional: API Key for NUBYTDLP to download YouTube videos",
+    "NUB_YTDLP_API_KEY": {
+      "description": "Optional: API Key for NUB_YTDLP to download YouTube videos",
       "required": false
     },
-    "NUBYTDLP_BASE_URL": {
-      "description": "Optional: Base URL for NUBYTDLP API (defaults to http://api.nubcoder.com)",
+    "NUB_YTDLP_BASE_URL": {
+      "description": "Optional: Base URL for NUB_YTDLP API (defaults to http://api.nubcoder.com)",
       "value": "http://api.nubcoder.com",
       "required": false
     }

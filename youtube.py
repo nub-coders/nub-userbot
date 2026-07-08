@@ -16,9 +16,9 @@ from config import *
 
 logger = logging.getLogger(__name__)
 
-# API Configuration
+# API Configuration - Now uses BASE_URL from config.py
 API_TOKEN = getattr(sys.modules.get('config'), 'NUBYTDLP_API', os.getenv('NUBYTDLP_API', ''))
-BASE_URL = 'http://api.nubcoder.com'
+BASE_URL = getattr(sys.modules.get('config'), 'NUBYTDLP_BASE_URL', os.getenv('NUBYTDLP_BASE_URL', 'http://api.nubcoder.com'))
 
 def get_video_info(url_or_query: str, max_results: int = 1) -> Tuple[str, str, int, str, str, int, str, str, str]:
     """Get video info - returns (title, video_id, duration, youtube_link, channel_name, views, stream_url, thumbnail, time_taken)"""
@@ -383,7 +383,7 @@ async def handle_youtube_ytdlp(argument):
             if is_url:
                  info_dict = ydl.extract_info(argument, download=False)
             else:
-               info_dict= ydl.extract_info(f"ytsearch:{argument}", download=False)['entries'][0]
+                info_dict= ydl.extract_info(f"ytsearch:{argument}", download=False)['entries'][0]
 
             if not info_dict:
                 return None

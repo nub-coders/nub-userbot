@@ -966,7 +966,7 @@ async def generate_quote(client, payload: Dict[str, Any], user_dir: str) -> Opti
     # List of endpoints to try in order
     endpoints = [
         'https://bot.lyo.su/quote/generate',
-        'https://quote.nubcoder.com/generate',
+        'https://quote.nubcoders.com/generate',
         'http://quote-api:3000/generate',
         'http://127.0.0.1:3000/generate'
     ]

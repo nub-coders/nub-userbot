@@ -50,8 +50,8 @@
       "required": false
     },
     "NUB_YTDLP_BASE_URL": {
-      "description": "Optional: Base URL for NUB_YTDLP API (defaults to http://api.nubcoder.com)",
-      "value": "http://api.nubcoder.com",
+      "description": "Optional: Base URL for NUB_YTDLP API (defaults to http://api.nubcoders.com)",
+      "value": "http://api.nubcoders.com",
       "required": false
     }
   },

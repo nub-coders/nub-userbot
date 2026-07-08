@@ -16,7 +16,7 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 NUB_YTDLP_API_KEY = os.getenv('NUB_YTDLP_API_KEY', '')
 
 # NUB_YTDLP Base URL configuration
-NUB_YTDLP_BASE_URL = os.getenv('NUB_YTDLP_BASE_URL', 'http://api.nubcoder.com')
+NUB_YTDLP_BASE_URL = os.getenv('NUB_YTDLP_BASE_URL', 'http://api.nubcoders.com')
 
 # MongoDB connection (optional)
 MONGO_URI = os.getenv('MONGO_URI', '')

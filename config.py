@@ -15,6 +15,9 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 # Optional: NUBYTDLP API Key for YouTube downloads
 NUBYTDLP_API = os.getenv('NUBYTDLP_API', '')
 
+# NUBYTDLP Base URL configuration
+NUBYTDLP_BASE_URL = os.getenv('NUBYTDLP_BASE_URL', 'http://api.nubcoder.com')
+
 # MongoDB connection (optional)
 MONGO_URI = os.getenv('MONGO_URI', '')
 DB_NAME = os.getenv('DB_NAME', 'userbot')

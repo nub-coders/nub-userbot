@@ -36,7 +36,7 @@ A feature-rich Telegram userbot built with Pyrogram, offering a wide range of au
 - **Message Management**: Bulk delete, purge, and moderate messages
 
 ### 🤖 AI Integration
-- **DeepSeek AI**: Multiple AI commands for chat, reasoning, code generation
+- **Gemini AI**: Multiple AI commands for chat, reasoning, and code generation
 - **Smart Responses**: AI-powered text completion and analysis
 - **Content Generation**: Automated writing and summarization
 
@@ -51,8 +51,8 @@ A feature-rich Telegram userbot built with Pyrogram, offering a wide range of au
 ### Prerequisites
 - Python 3.8+
 - Telegram API credentials (API ID and Hash)
-- MongoDB database
 - Pyrogram session string
+- MongoDB database (optional — falls back to in-memory storage if not set)
 
 ### Installation
 
@@ -62,20 +62,31 @@ A feature-rich Telegram userbot built with Pyrogram, offering a wide range of au
    - Note down your `API_ID` and `API_HASH`
 
 2. **Generate a session string:**
-   - Use any session string generator for Pyrogram
+   - Use any session string generator for Pyrogram (kurigram)
    - Save the session string securely
 
 3. **Configure the bot:**
-   - Update `config.py` with your credentials
-   - Set up MongoDB connection string
-   - Configure admin settings in `admin.txt`
+   - Copy `.env.example` to `.env` and fill in your credentials
+   - At minimum set `API_ID`, `API_HASH`, and `SESSION_STR`
+   - Everything else is optional (see [Configuration](#️-configuration))
 
-4. **Run the userbot:**
+4. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+5. **Run the userbot:**
    ```bash
    python main.py
    ```
-   - Enter your session string when prompted
+   - If `SESSION_STR` is not set, you will be prompted for a session string
    - The bot will start and load all plugins
+
+### Run with Docker
+
+```bash
+docker compose up -d
+```
 
 ## 🚢 Deploy
 
@@ -87,15 +98,19 @@ A feature-rich Telegram userbot built with Pyrogram, offering a wide range of au
 
 ## ⚙️ Configuration
 
-### Essential Settings
-- **API Credentials**: Set your `API_ID` and `API_HASH` in `config.py`
-- **MongoDB**: Configure your database connection
-- **Admin Access**: Add admin user IDs to `admin.txt`
+All configuration is done through environment variables (or a `.env` file). See `.env.example` for the full list.
 
-### Optional Features
-- **Premium Features**: Configure premium user management
-- **AI Integration**: Set up DeepSeek API key for AI features
-- **Custom Responses**: Personalize auto-reply messages
+### Required
+- `API_ID` / `API_HASH` — Telegram API credentials from [my.telegram.org](https://my.telegram.org)
+- `SESSION_STR` — your Pyrogram session string
+
+### Optional
+- `BOT_TOKEN` — bot token from [@BotFather](https://t.me/BotFather), enables inline bot features
+- `GEMINI_API_KEY` — Google Gemini API key from [aistudio.google.com](https://aistudio.google.com/app/apikey), enables AI features
+- `YT_DLP_API_KEY` / `YT_DLP_BASE_URL` — YouTube download service configuration
+- `MONGO_URI` / `DB_NAME` — MongoDB for persistent storage; leave `MONGO_URI` empty to use in-memory storage (data is lost on restart)
+- `GROUP` / `CHANNEL` — your support group and updates channel usernames (without @)
+- `USERBOT_USERNAME` — your userbot account username (without @) shown in menus
 
 ## 📋 Commands Overview
 
@@ -130,11 +145,25 @@ A feature-rich Telegram userbot built with Pyrogram, offering a wide range of au
 - `.purge` - Delete message range
 - `.power <type>` - Promote users with permissions
 
-### AI Commands
+### AI Commands (Gemini, prefixed with `/`)
 - `/chat <text>` - General AI conversation
-- `/code <request>` - Generate code with AI
+- `/reason <text>` - Step-by-step problem solving
+- `/code <request>` - Generate or fix code
 - `/summarize <text>` - Summarize content
 - `/translate <text>` - Translate languages
+- `/write <topic>` - Generate written content
+- `/analysis <text>` - In-depth analysis
+- `/gemini_help` - List all AI commands
+
+## ⭐ Telegram Premium Features
+
+Some features rely on a **Telegram Premium** account on the userbot session. They will fail gracefully (raising `PremiumAccountRequired`) if the account is not Premium:
+
+- **Custom Emoji Status**: `.setemoji <emoji>` sets an animated/custom emoji status on your account
+- **Custom (Animated) Emojis**: sending premium custom emojis inside messages
+- **Voice Chat Streaming**: streaming certain media in voice chats may require Premium depending on the chat
+
+No extra configuration is needed — these activate automatically when the session account has Premium.
 
 ## 🛡️ Security Features
 
@@ -166,7 +195,7 @@ A feature-rich Telegram userbot built with Pyrogram, offering a wide range of au
 - **Session Errors**: Regenerate session string if expired
 - **Permission Errors**: Ensure proper admin rights in groups
 - **Module Import Errors**: Check all dependencies are installed
-- **Database Connection**: Verify MongoDB connection string
+- **Database Connection**: Verify `MONGO_URI`, or leave it empty to use in-memory storage
 
 ### Performance Tips
 - Monitor memory usage for large file operations
@@ -182,7 +211,7 @@ This project is provided as-is for educational purposes. Use responsibly and in 
 - This userbot is for educational and personal use only
 - Users are responsible for complying with Telegram's ToS
 - The developers are not responsible for any misuse
-- Some features may require premium Telegram accounts
+- Some features (custom emoji status, animated emojis) require a Telegram Premium account
 
 ## 🤝 Support
 

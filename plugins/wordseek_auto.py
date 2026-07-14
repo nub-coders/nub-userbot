@@ -7,28 +7,37 @@ import asyncio
 import json
 import re
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message
 from plugins.game_solver import get_solver
 from tools import *
+import wordseek_config as ws_config
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Active game states: {chat_id: game_state}
+# Active game states: {chat_id: game_state}
 ACTIVE_GAMES: Dict[int, Dict] = {}
-
 # Configuration
-CONFIG = {
-    'AUTO_DELAY': 4.0,  # Seconds between guesses
-    'MAX_GUESSES': 30,
-    'MIN_WORD_CONFIDENCE': 0.3,
-    'DEBUG_MODE': False,
-}
+AUTO_DELAY = 4.0  # Seconds between guesses
 
 # Trigger words - auto-play only starts when user types one of these
+# Keep starter words aligned with supported game lengths.
 TRIGGER_WORDS = {
+    # 4-letter starters
+    'ABLE',
+    'ACID',
+    'ACRE',
+    'AFAR',
+    'AFRO',
+    'DARE',
+    'SALT',
+    'COIN',
+    'HARE',
+    'LIME',
+    # 5-letter starters
     'STARE',
     'SLATE',
     'CRATE',
@@ -39,15 +48,36 @@ TRIGGER_WORDS = {
     'GRACE',
     'SHADE',
     'TRACE',
+    'AUDIO',
+    'AROSE',
+    'ADORE',
+    # 6-letter starters
+    'ABATED',
+    'ABDUCT',
+    'ABJECT',
+    'ABOARD',
+    'ABLAZE',
+    'ABOUND',
+    'ABROAD',
+    'ABSENT',
+    'ABSORB',
+    'ABRUPT',
+    'CASTLE',
+    'ACTION',
+    'BRIDGE',
+    'DESIGN',
+    'FACTOR',
 }
 
-def init_game_state(chat_id: int) -> Dict:
+def init_game_state(chat_id: int, word_length: int = None) -> Dict:
     """Initialize a new game state"""
     return {
         'chat_id': chat_id,
         'known_letters': {},  # {char: [wrong_positions]}
         'excluded_letters': set(),
         'position_hints': {},  # {pos: char}
+        'min_letter_count': {},  # {char: int} — at least this many
+        'max_letter_count': {},  # {char: int} — at most this many
         'guesses_made': 0,
         'attempts_left': 30,
         'game_active': True,
@@ -56,7 +86,22 @@ def init_game_state(chat_id: int) -> Dict:
         'patterns': {},  # {word: feedback_pattern}
         'waiting_for_reply': False,  # Flag to prevent sending multiple words
         'last_sent_word': None,  # Track the last sent word
+        'word_length': word_length,  # Set from trigger word length
     }
+
+
+def get_supported_lengths() -> List[int]:
+    """Return the supported WordSeek lengths from the live solver when possible."""
+    try:
+        solver_lengths = sorted(get_solver().all_words_by_length.keys())
+        if solver_lengths:
+            return solver_lengths
+    except Exception as exc:
+        logger.warning(f"[AUTO-GAME] Failed to read solver lengths: {exc}")
+
+    configured = ws_config.GAME_SETTINGS.get('supported_lengths', [5])
+    lengths = [length for length in configured if isinstance(length, int)]
+    return lengths or [5]
 
 
 def safe_text_preview(text: Optional[str], limit: int = 150) -> str:
@@ -81,37 +126,27 @@ def parse_feedback_from_message(message_text: str) -> Optional[dict]:
     logger.debug(f"[PARSE] Attempting to parse message: {repr(safe_text_preview(message_text, 200))}")
     results = {}
     
-    # Pattern: 5 emojis (with or without spaces) followed by a word
-    # Match emojis and extract the word after them
+    # Pattern: 4-6 emojis (with or without spaces) followed by a word
+    # Match emoji sequence and extract the word after them
     lines = message_text.split('\n')
     logger.debug(f"[PARSE] Split into {len(lines)} lines")
     
     for i, line in enumerate(lines):
         logger.debug(f"[PARSE] Line {i}: {repr(safe_text_preview(line, 200))}")
-        # Pattern: emojis followed by a word (including bold Unicode characters)
-        # Look for: 🟩 🟩 🟥 🟩 🟥 𝗕𝗘𝗔𝗡𝗦 or 🟩 🟩 🟥 🟩 🟥 BEANS
-        emoji_pattern = r'(🟩|🟨|🟥)\s*(🟩|🟨|🟥)\s*(🟩|🟨|🟥)\s*(🟩|🟨|🟥)\s*(🟩|🟨|🟥)\s+([\w\U0001D400-\U0001D7FF]+)'
-        match = re.search(emoji_pattern, line)
-        
+        # Capture 4 to 6 emoji symbols in a row, then the word
+        emoji_seq_pattern = r'((?:🟩|🟨|🟥)(?:\s*(?:🟩|🟨|🟥)){3,5})\s+([\w\U0001D400-\U0001D7FF]+)'
+        match = re.search(emoji_seq_pattern, line)
+
         if match:
-            # Reconstruct the feedback string from captured groups
-            feedback = ''.join(match.groups()[:5])
-            word_raw = match.group(6)
+            # Group 1 contains the emoji sequence (with spaces); extract individual emojis
+            emoji_seq = match.group(1)
+            emojis = re.findall(r'(🟩|🟨|🟥)', emoji_seq)
+            feedback = ''.join(emojis)
+            word_raw = match.group(2)
             
-            # Convert bold Unicode letters to regular ASCII if needed
-            # Bold Unicode letters: 𝗔-𝗭 (U+1D5D4 - U+1D5ED)
-            word_ascii = ''
-            for char in word_raw:
-                # Check if it's a bold Unicode letter
-                code = ord(char)
-                if 0x1D5D4 <= code <= 0x1D5ED:  # Bold capital A-Z
-                    word_ascii += chr(code - 0x1D5D4 + ord('A'))
-                elif 0x1D5EE <= code <= 0x1D607:  # Bold lowercase a-z
-                    word_ascii += chr(code - 0x1D5EE + ord('a'))
-                else:
-                    word_ascii += char.upper()
-            
-            word = word_ascii.upper()
+            # Convert bold/styled Unicode letters to regular ASCII if needed
+            import unicodedata
+            word = unicodedata.normalize('NFKD', word_raw).upper()
             results[word] = feedback
             logger.info(f"[PARSE] ✓ Parsed: {word} → {feedback} (raw: {word_raw})")
         else:
@@ -124,108 +159,59 @@ def parse_feedback_from_message(message_text: str) -> Optional[dict]:
 def is_game_over_message(text: str) -> bool:
     """Check if message indicates game is over"""
     game_over_keywords = [
-        'Congrats! You guessed it correctly.',
+        'congrats! you guessed it correctly.',
         'game over',
         'the word was',
-        'Correct Word:',
+        'correct word:',
         'congratulations',
         'won',
         'lost',
         'no more guesses',
         'out of attempts',
     ]
-    
-    return any(keyword in text for keyword in game_over_keywords)
+    text_lower = text.lower()
+    return any(keyword in text_lower for keyword in game_over_keywords)
 
 
 def is_game_started_message(text: str) -> bool:
     """Check if message indicates a game has started"""
-    start_keywords = [
-        'game started',
-        'guess the 5',
-        'new game',
-        'start a new game',
-    ]
-    
+    start_keywords = ['game started', 'new game', 'start a new game']
+    t = text.lower()
+    return bool(any(k in t for k in start_keywords) or re.search(r'guess the\s*\d', t))
+
+
+def _is_game_bot_response(_, __, message: Message) -> bool:
+    """Match a supported game bot message carrying feedback or a game-over notice."""
+    if not (message.from_user and (message.from_user.username or '').lower() in ['wordseekbot', 'crocodilegameenn_bot']):
+        return False
+    text = message.text or ""
+    has_emoji = '🟩' in text or '🟨' in text or '🟥' in text
     text_lower = text.lower()
-    return any(keyword in text_lower for keyword in start_keywords)
+    has_game_over = ('congrats' in text_lower or 'word was' in text_lower or
+                     'correct word' in text_lower or 'game over' in text_lower)
+    return has_emoji or has_game_over
 
 
-async def wait_for_bot_response(client: Client, chat_id: int, user_message_id: int, timeout: int = 10):
+async def wait_for_bot_response(client: Client, chat_id: int, timeout: int = 10):
     """
-    Wait for supported game bot response with feedback
-    Checks if bot has already responded by comparing message IDs
-    Returns the bot's message or None if timeout
+    Wait for a supported game bot response with feedback (or a game-over notice).
+    Returns the bot's message, or None if the timeout elapses.
     """
     try:
-        start_time = asyncio.get_event_loop().time()
-        logger.info(f"[WAIT] Starting to wait for bot response after message ID {user_message_id}")
-        
-        check_count = 0
-        while True:
-            check_count += 1
-            # Search for latest messages in chat (not filtering by user since that might fail)
-            found_bot_message = False
-            latest_msg = None
-            
-            async for message in client.search_messages(
-                chat_id=chat_id,
-                limit=10  # Check last 10 messages
-            ):
-                # Check if this message is from a supported game bot
-                if message.from_user and (message.from_user.username or '').lower() in ['wordseekbot', 'crocodilegameenn_bot']:
-                    # Check if bot message is newer than user's message
-                    if message.id > user_message_id:
-                        # Store the latest message (first match since results are in reverse chronological order)
-                        if latest_msg is None:
-                            latest_msg = message
-                            logger.debug(f"[WAIT] Check #{check_count}: Latest bot message ID {message.id}, user message ID {user_message_id}")
-                            logger.debug(f"[WAIT] Message preview: {repr(safe_text_preview(message.text, 150))}")
-                        # Break after finding latest message - no need to check older ones
-                        break
-            
-            # Only check win condition in the latest message
-            if latest_msg:
-                # Check if it contains feedback or game over message
-                has_emoji = '🟩' in latest_msg.text or '🟨' in latest_msg.text or '🟥' in latest_msg.text
-                has_game_over = ('congrats' in latest_msg.text.lower() or 'word was' in latest_msg.text.lower() or
-                               'correct word' in latest_msg.text.lower() or 'game over' in latest_msg.text.lower())
-                
-                logger.debug(f"[WAIT] Latest message check - has_emoji: {has_emoji}, has_game_over: {has_game_over}")
-                
-                if has_emoji or has_game_over:
-                    logger.info(f"[WAIT] ✓ Valid bot response found (ID: {latest_msg.id})")
-                    logger.info(f"[WAIT] Full message text:\n{safe_text_preview(latest_msg.text, 2000)}")
-                    found_bot_message = True
-                    return latest_msg
-                else:
-                    logger.debug(f"[WAIT] Latest bot message doesn't match criteria")
-            
-            if not found_bot_message:
-                logger.debug(f"[WAIT] Check #{check_count}: No new messages from supported game bots found")
-                
-            # Check timeout
-            elapsed = asyncio.get_event_loop().time() - start_time
-            if elapsed >= timeout:
-                logger.warning(f"[WAIT] Timeout after {check_count} checks waiting for bot response")
-                logger.info(f"[WAIT] Last check - searching last 10 messages for debug...")
-                async for msg in client.search_messages(chat_id=chat_id, limit=10):
-                    username = msg.from_user.username if msg.from_user else 'None'
-                    logger.info(
-                        f"[WAIT] Debug msg: ID={msg.id}, from={username}, "
-                        f"text={repr(safe_text_preview(msg.text, 50)) if msg.text else 'N/A'}"
-                    )
-                return None
-            
-            # Wait a bit before checking again
-            await asyncio.sleep(1.0)  # Increased from 0.5 to 1.0 second
-        
-    except Exception as e:
-        logger.error(f"[WAIT] Error waiting for response: {e}", exc_info=True)
+        message = await client.listen.Message(
+            filters.chat(chat_id) & filters.create(_is_game_bot_response),
+            timeout=timeout,
+        )
+        if message:
+            logger.info(f"[WAIT] ✓ Valid bot response found (ID: {message.id})")
+            logger.info(f"[WAIT] Full message text:\n{safe_text_preview(message.text, 2000)}")
+        return message
+    except asyncio.TimeoutError:
+        logger.warning(f"[WAIT] Timeout after {timeout}s waiting for bot response in chat {chat_id}")
         return None
 
 
-async def play_game_loop(client: Client, chat_id: int, initial_message_id: int):
+async def play_game_loop(client: Client, chat_id: int):
     """
     Main game loop - waits for bot responses and sends next guesses
     """
@@ -234,11 +220,10 @@ async def play_game_loop(client: Client, chat_id: int, initial_message_id: int):
         return
     
     game = ACTIVE_GAMES[chat_id]
-    last_user_message_id = initial_message_id
-    
+
     while game['game_active'] and game['attempts_left'] > 0:
         # Wait for bot response
-        bot_message = await wait_for_bot_response(client, chat_id, last_user_message_id)
+        bot_message = await wait_for_bot_response(client, chat_id)
         
         if not bot_message:
             logger.warning(f"[LOOP] No bot response received, stopping game")
@@ -250,8 +235,11 @@ async def play_game_loop(client: Client, chat_id: int, initial_message_id: int):
             logger.info(f"[LOOP] Game ended in chat {chat_id}")
             logger.info(f"[LOOP] Bot message: {bot_message.text[:100]}")
             
-            # Extract solution word
-            solution_pattern = r'(?:word was:|correct word:)\s*(\w{5})'
+            # Extract solution word (support multiple lengths)
+            lengths = get_supported_lengths()
+            min_len = min(lengths)
+            max_len = max(lengths)
+            solution_pattern = rf'(?:word was:|correct word:)\s*(\w{{{min_len},{max_len}}})'
             match = re.search(solution_pattern, bot_message.text.lower())
             if match:
                 game['word_solution'] = match.group(1)
@@ -286,8 +274,10 @@ async def play_game_loop(client: Client, chat_id: int, initial_message_id: int):
                     logger.debug(f"[LOOP] Word {word} already processed, skipping")
                     continue
                 
-                if len(word_feedback) != 5:
-                    logger.warning(f"[LOOP] Invalid feedback length for {word}: {word_feedback}")
+                # Validate feedback length matches the word length and is supported
+                supported = get_supported_lengths()
+                if len(word_feedback) not in supported or len(word_feedback) != len(word):
+                    logger.warning(f"[LOOP] Invalid feedback length or mismatch for {word}: {word_feedback}")
                     continue
             
                 # Store word and pattern
@@ -296,9 +286,12 @@ async def play_game_loop(client: Client, chat_id: int, initial_message_id: int):
             
                 logger.info(f"[LOOP] Feedback: {word} → {word_feedback}")
             
-                # Analyze feedback
+                # Record detected word length for this game
+                game['word_length'] = len(word_feedback)
+
+                # Analyze feedback (now returns 5-tuple with letter count constraints)
                 solver = get_solver()
-                known_letters, excluded_letters, position_hints = solver.analyze_feedback(
+                known_letters, excluded_letters, position_hints, min_lc, max_lc = solver.analyze_feedback(
                     word, word_feedback
                 )
             
@@ -312,12 +305,13 @@ async def play_game_loop(client: Client, chat_id: int, initial_message_id: int):
                             
                 game['excluded_letters'].update(excluded_letters)
                 game['position_hints'].update(position_hints)
-                
-                # Cleanup conflicts in case earlier guesses incorrectly excluded a letter
-                for ch in game['position_hints'].values():
-                    game['excluded_letters'].discard(ch)
-                for ch in game['known_letters']:
-                    game['excluded_letters'].discard(ch)
+
+                # Merge letter-count constraints (take the tightest bounds)
+                for ch, mc in min_lc.items():
+                    game['min_letter_count'][ch] = max(game['min_letter_count'].get(ch, 0), mc)
+                for ch, mc in max_lc.items():
+                    prev = game['max_letter_count'].get(ch)
+                    game['max_letter_count'][ch] = mc if prev is None else min(prev, mc)
                 
                 game['guesses_made'] += 1
                 game['attempts_left'] -= 1
@@ -326,29 +320,38 @@ async def play_game_loop(client: Client, chat_id: int, initial_message_id: int):
             logger.info(f"[LOOP] Used words: {game['used_words']}")
         
         # Get next guess
-        await asyncio.sleep(CONFIG['AUTO_DELAY'])
+        await asyncio.sleep(AUTO_DELAY)
         
         solver = get_solver()
+        # Prefer the detected game length, then the live supported default
+        target_length = game.get('word_length') or get_supported_lengths()[0]
         candidates = solver.filter_candidates(
             game['known_letters'],
             game['excluded_letters'],
-            game['position_hints']
+            game['position_hints'],
+            word_length=target_length,
+            min_letter_count=game.get('min_letter_count', {}),
+            max_letter_count=game.get('max_letter_count', {}),
         )
         
         # Filter out already used words
-        available_candidates = [w for w in candidates if w not in game['used_words']]
+        # Normalize used words to lowercase for comparison
+        used_lower = {u.lower() for u in game.get('used_words', [])}
+        available_candidates = [w for w in candidates if w not in used_lower]
         
         if available_candidates:
-            next_guess = solver.get_best_guess(available_candidates, game['position_hints'])
-            game['last_sent_word'] = next_guess
-            
+            next_guess = solver.get_best_guess(available_candidates, game['position_hints'],
+                                                word_length=target_length)
+            # Ensure first letter is uppercase when sending
+            send_word = next_guess.capitalize()
+            game['last_sent_word'] = send_word
+
             logger.debug(f"[LOOP] Next guess: {next_guess} ({len(available_candidates)} candidates)")
-            
+
             # Send the word to the bot
             await client.send_chat_action(chat_id, enums.ChatAction.TYPING)
-            logger.info(f"[LOOP] Sending word: '{next_guess}'")
-            sent_message = await client.send_message(chat_id, next_guess)
-            last_user_message_id = sent_message.id
+            logger.info(f"[LOOP] Sending word: '{send_word}'")
+            await client.send_message(chat_id, send_word)
         else:
             logger.warning(f"[LOOP] No available candidates found!")
             ACTIVE_GAMES.pop(chat_id, None)
@@ -361,7 +364,6 @@ async def play_game_loop(client: Client, chat_id: int, initial_message_id: int):
     filters.text
     & (filters.user(['wordseekbot', 'crocodilegameenn_bot']) | filters.group)
     & ~filters.incoming
-    & filters.command(list(TRIGGER_WORDS), prefixes="")
 )
 async def auto_play_handler(client: Client, message: Message):
     """Handle auto-play of WordSeek game - trigger words and user input"""
@@ -372,23 +374,42 @@ async def auto_play_handler(client: Client, message: Message):
     if text.startswith('/'):
         return
     
-    # User sending trigger word
-    if text in TRIGGER_WORDS and chat_id not in ACTIVE_GAMES:
-        logger.info(f"[AUTO-GAME] Trigger word '{text}' detected, starting auto-play")
-        ACTIVE_GAMES[chat_id] = init_game_state(chat_id)
+    # Skip if an active game already exists
+    if chat_id in ACTIVE_GAMES:
+        return
+
+    # Determine if we should start auto-play:
+    # 1. Direct trigger word match
+    is_trigger_word = text in TRIGGER_WORDS
+    
+    # 2. Any valid length guess word in a private bot chat
+    supported_lens = get_supported_lengths()
+    is_valid_len_word = len(text) in supported_lens and text.isalpha()
+    is_private_bot = message.chat.type == enums.ChatType.PRIVATE and (message.chat.username or '').lower() in ['wordseekbot', 'crocodilegameenn_bot']
+    
+    # 3. Any valid length guess word in a group chat where a game was recently started
+    is_game_active_in_group = False
+    if not is_private_bot and is_valid_len_word and message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+        try:
+            async for msg in client.get_chat_history(chat_id, limit=5):
+                if msg.from_user and (msg.from_user.username or '').lower() in ['wordseekbot', 'crocodilegameenn_bot']:
+                    if msg.text and is_game_started_message(msg.text):
+                        is_game_active_in_group = True
+                        break
+        except Exception as e:
+            logger.debug(f"[AUTO-GAME] Error checking chat history: {e}")
+
+    should_start = is_trigger_word or (is_valid_len_word and (is_private_bot or is_game_active_in_group))
+    
+    if should_start:
+        trigger_length = len(text)
+        logger.info(f"[AUTO-GAME] Starting auto-play with word '{text}' ({trigger_length} letters)")
+        ACTIVE_GAMES[chat_id] = init_game_state(chat_id, word_length=trigger_length)
         game = ACTIVE_GAMES[chat_id]
         game['last_sent_word'] = text
         
-        logger.info(f"[AUTO-GAME] Sending first word: {text}")
-        # The word will be sent as the user's message, we just need to wait for bot reply
-        
-        # Start game loop with the user's message ID
-        await play_game_loop(client, chat_id, message.id)
-        return
-    
-    # Skip if no active game
-    if chat_id not in ACTIVE_GAMES:
-        return
+        logger.info(f"[AUTO-GAME] Starting game loop for first word: {text}")
+        await play_game_loop(client, chat_id)
 
 
 @Client.on_message(filters.command('gameinfo', prefixes=HARDCODED_PREFIXES))
@@ -424,13 +445,17 @@ async def show_game_info(client: Client, message: Message):
 @Client.on_message(filters.command('wordseek',prefixes=HARDCODED_PREFIXES) & filters.me)
 async def wordseek_info(client: Client, message: Message):
     """Show WordSeek auto-play info and trigger words"""
+    chat_id = message.chat.id
+    supported = get_supported_lengths()
+
     words = ", ".join(sorted(TRIGGER_WORDS))
     info = (
         "🎮 **WordSeek Auto-Play**\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         "• **How to start:** Send any trigger word below\n"
         f"• **Trigger words:** {words}\n"
-        "• **Note:** The bot will auto-guess after the first word"
+        f"• **Supported word lengths:** {supported}\n"
+        "• **Note:** The bot will auto-guess after the first word\n"
     )
     await message.reply(info)
 
@@ -461,34 +486,12 @@ async def manual_guess(client: Client, message: Message):
     
     word = message.text.strip().lower()
     
-    # Validate 5-letter word
-    if not (len(word) == 5 and word.isalpha()):
+    # Validate supported word lengths
+    supported = get_supported_lengths()
+    if not (len(word) in supported and word.isalpha()):
         return
     
     game = ACTIVE_GAMES[chat_id]
-    game._last_guess = word
+    game['last_sent_word'] = word
     
     logger.info(f"[AUTO-GAME] Manual guess: {word}")
-
-
-def setup_auto_player(client: Client, config_updates: Optional[Dict] = None):
-    """Initialize auto-player with optional config updates"""
-    global CONFIG
-    
-    if config_updates:
-        CONFIG.update(config_updates)
-    
-    logger.info("[AUTO-GAME] Auto-player initialized")
-    logger.info(f"[AUTO-GAME] Config: {CONFIG}")
-
-
-# Export for use
-__all__ = [
-    'start_auto_game',
-    'auto_play_handler',
-    'manual_guess',
-    'show_game_info',
-    'setup_auto_player',
-    'ACTIVE_GAMES',
-    'CONFIG',
-]

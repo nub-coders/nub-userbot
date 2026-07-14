@@ -133,38 +133,7 @@ async def __async_exec_function():
             await handle_long_message(client, response_msg, code, error_text, is_error=True)
 
 async def handle_long_message(client, original_msg, code, output, is_error=False):
-    """Handle messages that are too long for Telegram's limits"""
-    
-    # First, try to split the message into chunks
-    if len(output) < 50000:  # If output is reasonably small, split it
-        try:
-            # First, edit the original message to indicate multiple parts
-            prefix = "<b>Error Output:</b>" if is_error else "<b>Result Output:</b>"
-            await client.edit_message_text(
-                chat_id=original_msg.chat.id,
-                message_id=original_msg.id,
-                text=f"<b>Eval Expression:</b>\n<pre>{html.escape(code[:500])}{'...' if len(code) > 500 else ''}</pre>\n{prefix} (Output too long, sending in parts)"
-            )
-            
-            # Then send output in chunks
-            MAX_LENGTH = 4000
-            chunks = [output[i:i+MAX_LENGTH] for i in range(0, len(output), MAX_LENGTH)]
-            
-            for i, chunk in enumerate(chunks):
-                await client.send_message(
-                    chat_id=original_msg.chat.id,
-                    text=f"<b>Part {i+1}/{len(chunks)}:</b>\n<pre>{html.escape(chunk)}</pre>"
-                )
-                
-        except Exception as chunk_error:
-            # If chunking fails, fall back to file upload
-            await upload_as_file(client, original_msg, code, output, is_error)
-    else:
-        # If output is very large, go straight to file upload
-        await upload_as_file(client, original_msg, code, output, is_error)
-
-async def upload_as_file(client, original_msg, code, output, is_error=False):
-    """Upload the output as a text file"""
+    """Output too long for a Telegram message — upload it as a text file."""
     try:
         # Create a temporary file
         file_name = f"eval_{'error' if is_error else 'output'}_{int(time.time())}.txt"

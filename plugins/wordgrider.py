@@ -6,12 +6,14 @@ import numpy as np
 import pytesseract
 import logging
 from collections import Counter
+from functools import lru_cache
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from tools import HARDCODED_PREFIXES
 from config import GEMINI_API_KEY
 from google import genai
 from PIL import Image
+from utils.message import Msg
 
 # ── Gemini Vision config ──
 GEMINI_MODEL = "gemini-2.0-flash"
@@ -40,7 +42,8 @@ TITLE_WORDS = {
 
 # ═══════════════════════ DICTIONARY ═══════════════════════
 
-def load_valid_words() -> set:
+@lru_cache(maxsize=1)
+def load_valid_words() -> frozenset:
     """
     Load a combined set of valid English words for validation.
     Uses words.txt (all lengths) as the primary source since
@@ -88,7 +91,7 @@ def load_valid_words() -> set:
 
     if not words:
         logger.warning("[GRID] No word lists found!")
-    return words
+    return frozenset(words)
 
 
 
@@ -526,15 +529,15 @@ def format_3d_results(grid_2d, results_3d, title):
     cols = len(grid_2d[0]) if rows else 0
 
     out = f"**{title}**\n\n"
-    out += f"📐 **Grid Size:** {rows} × {cols}\n\n"
+    out += f"{Msg.EMOJI_GRID} **Grid Size:** {rows} × {cols}\n\n"
 
-    out += "**🧩 2D Grid** `grid[row][col]`:\n```\n"
+    out += f"**{Msg.EMOJI_PUZZLE} 2D Grid** `grid[row][col]`:\n```\n"
     out += "    " + "  ".join(f"{c:>2}" for c in range(cols)) + "\n"
     for r, row in enumerate(grid_2d):
         out += f"{r:>2}| " + "  ".join(f"{ch:>2}" for ch in row) + "\n"
     out += "```\n\n"
 
-    out += "**🎯 3D Solutions** `results[clue][match]`:\n\n"
+    out += f"**{Msg.EMOJI_SOLVE} 3D Solutions** `results[clue][match]`:\n\n"
 
     if not results_3d:
         out += "_No riddle clues found in caption._\n"
@@ -594,14 +597,14 @@ async def solve_wordgrid(client: Client, message: Message):
         )
         return
 
-    m = await message.reply("📥 Downloading photo…")
+    m = await message.reply(f"{Msg.EMOJI_DOWNLOAD} Downloading photo…")
     photo_path = await target_msg.download()
 
     try:
         caption = target_msg.caption or target_msg.text or ""
         clues = parse_clues(caption)
         await m.edit(
-            f"🔍 **{len(clues)}** clues found. "
+            f"{Msg.EMOJI_SEARCH} **{len(clues)}** clues found. "
             f"Extracting grid (Gemini Vision → Tesseract fallback)…"
         )
 
@@ -623,7 +626,7 @@ async def solve_wordgrid(client: Client, message: Message):
 
         nrows, ncols = len(grid_2d), len(grid_2d[0])
         await m.edit(
-            f"✅ **{nrows}×{ncols}** grid extracted. Solving…"
+            f"{Msg.EMOJI_SUCCESS} **{nrows}×{ncols}** grid extracted. Solving…"
         )
 
         valid_words = load_valid_words()
@@ -631,18 +634,18 @@ async def solve_wordgrid(client: Client, message: Message):
 
         cap_up = caption.upper()
         if "HARD MODE" in cap_up:
-            title = "🔥 Hard Mode — 3D Grid Solver"
+            title = f"{Msg.EMOJI_FIRE} Hard Mode — 3D Grid Solver"
         elif "WORD GRID" in cap_up:
-            title = "🔥 Word Grid — 3D Grid Solver"
+            title = f"{Msg.EMOJI_FIRE} Word Grid — 3D Grid Solver"
         else:
-            title = "🧠 Word Grid — 3D Grid Solver"
+            title = f"{Msg.EMOJI_PUZZLE} Word Grid — 3D Grid Solver"
 
         response = format_3d_results(grid_2d, results_3d, title)
         await m.edit(response)
 
     except Exception as e:
         logger.error(f"Error processing WordGrid: {e}")
-        await m.edit(f"❌ Error: {e}")
+        await m.edit(f"{Msg.EMOJI_ERROR} Error: {e}")
     finally:
         if os.path.exists(photo_path):
             os.remove(photo_path)
@@ -679,7 +682,7 @@ async def manual_grid(client: Client, message: Message):
         )
         return
 
-    m = await message.reply("🔧 Processing manual grid…")
+    m = await message.reply(f"{Msg.EMOJI_GEAR} Processing manual grid…")
 
     try:
         raw_rows = []
@@ -689,12 +692,12 @@ async def manual_grid(client: Client, message: Message):
                 raw_rows.append(clean)
 
         if not raw_rows:
-            await m.edit("❌ No valid rows found.")
+            await m.edit(f"{Msg.EMOJI_ERROR} No valid rows found.")
             return
 
         grid_2d = build_2d_grid(raw_rows)
         if not grid_2d:
-            await m.edit("❌ Could not build grid from input.")
+            await m.edit(f"{Msg.EMOJI_ERROR} Could not build grid from input.")
             return
 
         clues = []
@@ -705,16 +708,16 @@ async def manual_grid(client: Client, message: Message):
 
         nrows, ncols = len(grid_2d), len(grid_2d[0])
         await m.edit(
-            f"✅ **{nrows}×{ncols}** grid loaded. "
+            f"{Msg.EMOJI_SUCCESS} **{nrows}×{ncols}** grid loaded. "
             f"Searching with **{len(clues)}** clues…"
         )
 
         valid_words = load_valid_words()
         results_3d = search_grid_3d(grid_2d, clues, valid_words)
-        title = "🧠 Word Grid — 3D Grid Solver (Manual)"
+        title = f"{Msg.EMOJI_PUZZLE} Word Grid — 3D Grid Solver (Manual)"
         response = format_3d_results(grid_2d, results_3d, title)
         await m.edit(response)
 
     except Exception as e:
         logger.error(f"Error processing manual grid: {e}")
-        await m.edit(f"❌ Error: {e}")
+        await m.edit(f"{Msg.EMOJI_ERROR} Error: {e}")

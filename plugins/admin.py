@@ -1,12 +1,12 @@
 import asyncio
 import logging
-from pyrogram import Client, filters, enums
+from pyrogram import Client, filters
 from pyrogram.enums import ChatMemberStatus
-from pyrogram.errors import FloodWait, UserAdminInvalid, ChatAdminRequired, RPCError
+from pyrogram.errors import UserAdminInvalid, ChatAdminRequired
 from pyrogram.types import Message, ChatPermissions
 from tools import (
     HARDCODED_PREFIXES, edit_or_reply, styled_error, styled_success,
-    sudoers_filter, retry, can_grant_privilege, is_admin_user
+    sudoers_filter, retry, can_grant_privilege
 )
 from utils.message import Msg
 
@@ -258,130 +258,40 @@ async def promote_handler(client: Client, message: Message):
         args = parts[2:] if len(parts) > 2 else []
         permissions_granted = []
         permissions_denied = []
-        
-        # Parse arguments for specific permissions
-        if "-all" in args or "--all" in args:
-            # Give all available admin powers that promoter has
-            if can_grant_privilege(promoter_privileges, 'can_manage_chat'):
-                privileges.can_manage_chat = True
-                permissions_granted.append("manage chat")
-            else:
-                permissions_denied.append("manage chat")
-                
-            if can_grant_privilege(promoter_privileges, 'can_delete_messages'):
-                privileges.can_delete_messages = True
-                permissions_granted.append("delete messages")
-            else:
-                permissions_denied.append("delete messages")
-                
-            if can_grant_privilege(promoter_privileges, 'can_manage_video_chats'):
-                privileges.can_manage_video_chats = True
-                permissions_granted.append("manage video chats")
-            else:
-                permissions_denied.append("manage video chats")
-                
-            if can_grant_privilege(promoter_privileges, 'can_restrict_members'):
-                privileges.can_restrict_members = True
-                permissions_granted.append("restrict members")
-            else:
-                permissions_denied.append("restrict members")
-                
-            if can_grant_privilege(promoter_privileges, 'can_change_info'):
-                privileges.can_change_info = True
-                permissions_granted.append("change info")
-            else:
-                permissions_denied.append("change info")
-                
-            if can_grant_privilege(promoter_privileges, 'can_invite_users'):
-                privileges.can_invite_users = True
-                permissions_granted.append("invite users")
-            else:
-                permissions_denied.append("invite users")
-                
-            if can_grant_privilege(promoter_privileges, 'can_pin_messages'):
-                privileges.can_pin_messages = True
-                permissions_granted.append("pin messages")
-            else:
-                permissions_denied.append("pin messages")
-                
-            if can_grant_privilege(promoter_privileges, 'can_manage_topics'):
-                privileges.can_manage_topics = True
-                permissions_granted.append("manage topics")
-            else:
-                permissions_denied.append("manage topics")
-            
+
+        # flag aliases -> (ChatPrivileges attr, display name)
+        FLAG_PRIVILEGES = [
+            (("-d", "--delete"), "can_delete_messages", "delete messages"),
+            (("-r", "--restrict"), "can_restrict_members", "restrict members"),
+            (("-i", "--invite"), "can_invite_users", "invite users"),
+            (("-p", "--pin"), "can_pin_messages", "pin messages"),
+            (("-c", "--change"), "can_change_info", "change info"),
+            (("-v", "--video"), "can_manage_video_chats", "manage video chats"),
+            (("-t", "--topics"), "can_manage_topics", "manage topics"),
+            (("-m", "--manage"), "can_manage_chat", "manage chat"),
+        ]
+        grant_all = "-all" in args or "--all" in args
+        any_flag = any(a in args for aliases, _, _ in FLAG_PRIVILEGES for a in aliases)
+
+        if grant_all or any_flag:
+            for aliases, attr, name in FLAG_PRIVILEGES:
+                if not (grant_all or any(a in args for a in aliases)):
+                    continue
+                if can_grant_privilege(promoter_privileges, attr):
+                    setattr(privileges, attr, True)
+                    permissions_granted.append(name)
+                else:
+                    permissions_denied.append(name)
         else:
-            # Parse individual permissions
-            if "-d" in args or "--delete" in args:
-                if can_grant_privilege(promoter_privileges, 'can_delete_messages'):
-                    privileges.can_delete_messages = True
-                    permissions_granted.append("delete messages")
-                else:
-                    permissions_denied.append("delete messages")
-                    
-            if "-r" in args or "--restrict" in args:
-                if can_grant_privilege(promoter_privileges, 'can_restrict_members'):
-                    privileges.can_restrict_members = True
-                    permissions_granted.append("restrict members")
-                else:
-                    permissions_denied.append("restrict members")
-                    
-            if "-i" in args or "--invite" in args:
-                if can_grant_privilege(promoter_privileges, 'can_invite_users'):
-                    privileges.can_invite_users = True
-                    permissions_granted.append("invite users")
-                else:
-                    permissions_denied.append("invite users")
-                    
-            if "-p" in args or "--pin" in args:
-                if can_grant_privilege(promoter_privileges, 'can_pin_messages'):
-                    privileges.can_pin_messages = True
-                    permissions_granted.append("pin messages")
-                else:
-                    permissions_denied.append("pin messages")
-                    
-            if "-c" in args or "--change" in args:
-                if can_grant_privilege(promoter_privileges, 'can_change_info'):
-                    privileges.can_change_info = True
-                    permissions_granted.append("change info")
-                else:
-                    permissions_denied.append("change info")
-                    
-            if "-v" in args or "--video" in args:
-                if can_grant_privilege(promoter_privileges, 'can_manage_video_chats'):
-                    privileges.can_manage_video_chats = True
-                    permissions_granted.append("manage video chats")
-                else:
-                    permissions_denied.append("manage video chats")
-                    
-            if "-t" in args or "--topics" in args:
-                if can_grant_privilege(promoter_privileges, 'can_manage_topics'):
-                    privileges.can_manage_topics = True
-                    permissions_granted.append("manage topics")
-                else:
-                    permissions_denied.append("manage topics")
-                    
-            if "-m" in args or "--manage" in args:
-                if can_grant_privilege(promoter_privileges, 'can_manage_chat'):
-                    privileges.can_manage_chat = True
-                    permissions_granted.append("manage chat")
-                else:
-                    permissions_denied.append("manage chat")
-            
-            # If no specific permissions requested, give basic available permissions
-            if not any(["-d" in args, "--delete" in args, "-r" in args, "--restrict" in args, 
-                       "-i" in args, "--invite" in args, "-p" in args, "--pin" in args,
-                       "-c" in args, "--change" in args, "-v" in args, "--video" in args,
-                       "-t" in args, "--topics" in args, "-m" in args, "--manage" in args]):
-                if can_grant_privilege(promoter_privileges, 'can_delete_messages'):
-                    privileges.can_delete_messages = True
-                    permissions_granted.append("delete messages")
-                if can_grant_privilege(promoter_privileges, 'can_restrict_members'):
-                    privileges.can_restrict_members = True
-                    permissions_granted.append("restrict members")
-                if can_grant_privilege(promoter_privileges, 'can_pin_messages'):
-                    privileges.can_pin_messages = True
-                    permissions_granted.append("pin messages")
+            # No specific permissions requested: give basic available permissions
+            for attr, name in (
+                ("can_delete_messages", "delete messages"),
+                ("can_restrict_members", "restrict members"),
+                ("can_pin_messages", "pin messages"),
+            ):
+                if can_grant_privilege(promoter_privileges, attr):
+                    setattr(privileges, attr, True)
+                    permissions_granted.append(name)
         
         if not permissions_granted:
             await message.reply("No privileges to grant")

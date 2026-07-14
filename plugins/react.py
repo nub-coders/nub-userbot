@@ -4,27 +4,27 @@ from pyrogram.enums import MessageEntityType
 import asyncio
 from config import *
 from tools import *
+from utils.message import Msg
 
-def mentioned_me():
-    async def func(_, __, message: Message):
-        if not message.entities:
-            return False
-
-        for entity in message.entities:
-            if entity.type == MessageEntityType.MENTION:
-                mentioned_user = message.text[entity.offset:entity.offset + entity.length]
-                if mentioned_user == f"@{__.me.username}":
-                    return True
-            elif entity.type == MessageEntityType.TEXT_MENTION:
-                if entity.user and entity.user.id == __.me.id:
-                    return True
+async def _mentioned_me(_, client, message: Message):
+    if not message.entities:
         return False
 
-    return filters.create(func)
+    for entity in message.entities:
+        if entity.type == MessageEntityType.MENTION:
+            mentioned_user = message.text[entity.offset:entity.offset + entity.length]
+            if mentioned_user == f"@{client.me.username}":
+                return True
+        elif entity.type == MessageEntityType.TEXT_MENTION:
+            if entity.user and entity.user.id == client.me.id:
+                return True
+    return False
+
+mentioned_me = filters.create(_mentioned_me)
 
 react_emojis = ['👍', '♥️', '🔥', '🎉']
 
-@Client.on_message(mentioned_me() & ~filters.bot)
+@Client.on_message(mentioned_me & ~filters.bot)
 async def auto_react_handler(client: Client, message: Message):
     try:
         user = await client.get_me()
@@ -79,19 +79,16 @@ async def react_control_command(client, message):
     args = message.command[1:] if len(message.command) > 1 else []
     
     if not args:
-        help_text = (
-            f"\n\n╭━━ <emoji id=\"5368324170671202286\">🤖</emoji> REACTION CONTROLS ━━╮\n"
-            f"\n"
-            f"┃ Commands\n"
-            f"┃ ▸ [prefix]react on  — enable reactions\n"
-            f"┃ ▸ [prefix]react off — disable reactions\n"
-            f"┃ ▸ [prefix]react 1   — set to 👍\n"
-            f"┃ ▸ [prefix]react 2   — set to ❤️\n"
-            f"┃ ▸ [prefix]react 3   — set to 🔥\n"
-            f"┃ ▸ [prefix]react 4   — set to 🎉\n"
-            f"┃ ▸ [prefix]react status\n"
-            f"\n"
-            f"╰━━━━━━━━━━━━━━━━━━━━━━╯"
+        help_text = Msg.card(
+            "Reaction Controls",
+            [
+                "[prefix]react on - enable reactions",
+                "[prefix]react off - disable reactions",
+                "[prefix]react 1-4 - choose a reaction",
+                "[prefix]react status - show current state",
+            ],
+            emoji=Msg.EMOJI_INFO,
+            footer=f"1={Msg.EMOJI_THUMBS_UP}  2={Msg.EMOJI_HEART}  3={Msg.EMOJI_FIRE}  4={Msg.EMOJI_PARTY}",
         )
         await message.edit(help_text)
         return
@@ -105,11 +102,7 @@ async def react_control_command(client, message):
             {"$set": {"react_control": 1}},
             upsert=True
         )
-        await message.edit(
-            f"Reactions Enabled\n\n"
-            f"┃ Default reaction: 👍\n"
-            f"╰▸ [prefix]react <1-4> to change"
-        )
+        await message.edit(Msg.card("Reactions Enabled", [f"Default reaction: {Msg.EMOJI_THUMBS_UP}"], emoji=Msg.EMOJI_SUCCESS, footer="[prefix]react <1-4> to change"))
         
     elif command == "off":
         user_sessions.update_one(
@@ -117,11 +110,7 @@ async def react_control_command(client, message):
             {"$unset": {"react_control": ""}},
             upsert=True
         )
-        await message.edit(
-            f"Reactions Disabled\n\n"
-            f"┃ Auto-reactions turned off\n"
-            f"╰▸ [prefix]react on to re-enable"
-        )
+        await message.edit(Msg.card("Reactions Disabled", ["Auto-reactions turned off"], emoji=Msg.EMOJI_WARNING, footer="[prefix]react on to re-enable"))
         
     elif command == "status":
         user_data = user_sessions.find_one({"user_id": user_id})
@@ -129,24 +118,11 @@ async def react_control_command(client, message):
             rc = user_data["react_control"]
             if isinstance(rc, int) and 1 <= rc <= len(react_emojis):
                 selected = react_emojis[rc - 1]
-                await message.edit(
-                    f"╭━━ <emoji id=\"5368324170671202286\">🤖</emoji> REACTION STATUS ━━╮\n"
-                    f"┃ Status: <emoji id=\"5368324170671202286\">✅</emoji> Enabled\n"
-                    f"┃ Emoji: {selected}\n"
-                    f"╰━━━━━━━━━━━━━━━━━━━━━╯"
-                )
+                await message.edit(Msg.card("Reaction Status", ["Status: Enabled", f"Emoji: {selected}"], emoji=Msg.EMOJI_INFO))
             else:
-                await message.edit(
-                    f"╭━━ <emoji id=\"5368324170671202286\">🤖</emoji> REACTION STATUS ━━╮\n"
-                    f"┃ Status: <emoji id=\"5368324170671202286\">❌</emoji> Disabled\n"
-                    f"╰━━━━━━━━━━━━━━━━━━━━━╯"
-                )
+                await message.edit(Msg.card("Reaction Status", ["Status: Disabled"], emoji=Msg.EMOJI_INFO))
         else:
-            await message.edit(
-                f"╭━━ 🤖 REACTION STATUS ━━╮\n"
-                f"┃ Status: ❌ Disabled\n"
-                f"╰━━━━━━━━━━━━━━━━━━━━━╯"
-            )
+            await message.edit(Msg.card("Reaction Status", ["Status: Disabled"], emoji=Msg.EMOJI_INFO))
             
     elif command.isdigit():
         try:
@@ -158,32 +134,20 @@ async def react_control_command(client, message):
                     upsert=True
                 )
                 selected = react_emojis[reaction_num - 1]
-                await message.edit(
-                    f"Reaction Updated\n\n"
-                    f"┃ New Reaction: {selected}"
-                )
+                await message.edit(Msg.card("Reaction Updated", [f"New reaction: {selected}"], emoji=Msg.EMOJI_SUCCESS))
             else:
-                await message.edit(
-                    f"Invalid Number\n\n"
-                    f"┃ Use 1 to {len(react_emojis)}"
-                )
+                await message.edit(Msg.card("Invalid Number", [f"Use 1 to {len(react_emojis)}"], emoji=Msg.EMOJI_ERROR))
         except ValueError:
-            await message.edit(
-                f"Invalid Command\n\n"
-                f"┃ [prefix]react help for usage"
-            )
+            await message.edit(Msg.card("Invalid Command", ["Use [prefix]react help for usage"], emoji=Msg.EMOJI_ERROR))
     else:
-        await message.edit(
-            f"Invalid Command\n\n"
-            f"┃ [prefix]react help for usage"
-        )
+        await message.edit(Msg.card("Invalid Command", ["Use [prefix]react help for usage"], emoji=Msg.EMOJI_ERROR))
 
 @Client.on_message(filters.command("reactlist", prefixes=HARDCODED_PREFIXES) & filters.me)
 async def react_list_command(client, message):
     """List available reactions"""
-    reactions_text = f"╭━━ <emoji id=\"5368324170671202286\">🤖</emoji> AVAILABLE REACTIONS ━━╮\n\n"
-    for i, emoji in enumerate(react_emojis, 1):
-        reactions_text += f"┃ {str(i)}. {emoji}\n"
-    
-    reactions_text += f"\n╰▸ [prefix]react <number> to set"
-    await message.edit(reactions_text)
+    await message.edit(Msg.card(
+        "Available Reactions",
+        [f"{i}. {emoji}" for i, emoji in enumerate(react_emojis, 1)],
+        emoji=Msg.EMOJI_INFO,
+        footer="[prefix]react <number> to set",
+    ))

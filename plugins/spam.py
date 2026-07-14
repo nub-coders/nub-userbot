@@ -82,12 +82,7 @@ def get_arg(message) -> [None, str]:
 
 # Check if user was active in last 3 days
 def is_active_user(user):
-    if user.status == UserStatus.ONLINE or user.status == UserStatus.RECENTLY:
-        return True
-    elif user.status == UserStatus.LAST_WEEK:
-        # Approximate check for 3 days, since we don't have exact date
-        return True
-    return False
+    return user.status in (UserStatus.ONLINE, UserStatus.RECENTLY, UserStatus.LAST_WEEK)
 
 @Client.on_message(filters.command(["spam", "statspam", "slowspam"]) & filters.me)
 @retry()
@@ -317,7 +312,7 @@ async def cancel_spam(client, message):
 @Client.on_message(filters.command("raid") & filters.me)
 @retry()
 async def raid(xspam: Client, e: Message):
-      Zaid = "".join(e.text.split(maxsplit=1)[1:]).split(" ", 2)
+    pass
 
 @Client.on_message(filters.command("replyraid") & filters.me)
 @retry()
@@ -371,14 +366,6 @@ async def activate_reply_raid(c: Client,m: Message):
              await Pbx.edit_text(f"Reply Raid has been activated on {username}")
         else:
             await Pbx.edit_text("You already have started reply raid for this user")
-
-@Client.on_message(filters.command("dreplyraid") & filters.me)
-@retry()
-async def deactivate_reply_raid(c, m):
-    user_data = user_sessions.find_one({"user_id": c.me.id})
-    raid_listed = user_data.get('raid_users', [])
-    if m.forward_from:
-        return
 
 @Client.on_message(create_raid_filter)
 @retry()

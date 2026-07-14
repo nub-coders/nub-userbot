@@ -204,7 +204,7 @@ No extra configuration is needed — these activate automatically when the sessi
 
 ## 📄 License
 
-This project is provided as-is for educational purposes. Use responsibly and in accordance with Telegram's Terms of Service.
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details. Use responsibly and in accordance with Telegram's Terms of Service.
 
 ## ⚠️ Disclaimer
 

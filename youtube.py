@@ -15,8 +15,8 @@ from config import *
 logger = logging.getLogger(__name__)
 
 # API Configuration
-API_TOKEN = getattr(sys.modules.get('config'), 'NUB_YTDLP_API_KEY', os.getenv('NUB_YTDLP_API_KEY', os.getenv('NUBYTDLP_API', '')))
-BASE_URL = getattr(sys.modules.get('config'), 'NUB_YTDLP_BASE_URL', os.getenv('NUB_YTDLP_BASE_URL', os.getenv('YTDLP_BASE_URL', 'http://api.nubcoders.com')))
+API_TOKEN = getattr(sys.modules.get('config'), 'YT_DLP_API_KEY', os.getenv('YT_DLP_API_KEY', ''))
+BASE_URL = getattr(sys.modules.get('config'), 'YT_DLP_BASE_URL', os.getenv('YT_DLP_BASE_URL', 'http://api.nubcoders.com'))
 
 def get_video_info(url_or_query: str, max_results: int = 1) -> Tuple[str, str, int, str, str, int, str, str, str]:
     """Get video info - returns (title, video_id, duration, youtube_link, channel_name, views, stream_url, thumbnail, time_taken)"""

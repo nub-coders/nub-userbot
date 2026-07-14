@@ -1,5 +1,5 @@
 
-# 🤖 Advanced Pyrogram Userbot
+# 🤖 Advanced Nub Userbot
 
 A feature-rich Telegram userbot built with Pyrogram, offering a wide range of automation and utility features for power users.
 

@@ -80,29 +80,22 @@ async def wordchain_listener(client, message):
                 if chat_id not in used_words:
                     used_words[chat_id] = []
 
-                # Select a random word that has not been used in this chat
-                for attempt in range(5):
-                    random_word = None
-                    for _ in range(10):  # Try up to 10 times to find an unused word
-                      random_word = random.choice(filtered_words)
-                      if random_word not in used_words[chat_id]:
+                # Retry up to 5 times: pick an unused random word and send it
+                for _ in range(5):
+                    available = [w for w in filtered_words if w not in used_words[chat_id]]
+                    if not available:
                         break
-                      random_word = None
-                    user_data = user_sessions.find_one({"user_id": client.me.id})
-                    if user_data:
-                       game = user_data.get('game', True)
-                       if not game:
-                           print("game is off, returning.")
-                           return
+                    random_word = random.choice(available)
 
-                    if random_word:
-                        await asyncio.sleep(4)
-                        used_words[chat_id].append(random_word)
-                        await client.send_chat_action(chat_id, enums.ChatAction.TYPING)
-                        await client.send_message(chat_id, random_word)
-                    else:
-                       used_words[chat_id].append(random_word)
-                       pass
+                    user_data = user_sessions.find_one({"user_id": client.me.id})
+                    if user_data and not user_data.get('game', True):
+                        print("game is off, returning.")
+                        return
+
+                    await asyncio.sleep(4)
+                    used_words[chat_id].append(random_word)
+                    await client.send_chat_action(chat_id, enums.ChatAction.TYPING)
+                    await client.send_message(chat_id, random_word)
                     try:
                         response = await client.listen.Message(
         filters.regex(pattern) & filters.user(message.from_user.id) & filters.chat(message.chat.id),

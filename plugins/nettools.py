@@ -144,94 +144,29 @@ async def calculator(client: Client, message: Message):
         expression = expression.replace('×', '*')
         expression = expression.replace('÷', '/')
         
-        # Evaluate the expression safely
-        try:
-            # Parse the expression as an AST
-            parsed = ast.parse(expression, mode='eval')
-            
-            # Check for dangerous operations
-            for node in ast.walk(parsed):
-                if isinstance(node, (ast.Import, ast.ImportFrom, ast.Call)):
-                    if isinstance(node, ast.Call):
-                        if isinstance(node.func, ast.Name):
-                            if node.func.id not in safe_namespace:
-                                return await edit_or_reply(
-                                    message,
-                                    f"❌ **Unsafe operation detected**\n\n"
-                                    f"⚠️ Function `{node.func.id}` is not allowed\n\n"
-                                    f"💡 Use `{HARDCODED_PREFIXES[0]}calc` for available functions"
-                                )
-            
-            # Evaluate the expression
-            result = eval(compile(parsed, '<string>', 'eval'), {"__builtins__": {}}, safe_namespace)
-            
-            # Format the result
-            if isinstance(result, float):
-                # Round to 10 decimal places to avoid floating point errors
-                if result.is_integer():
-                    result = int(result)
-                else:
-                    result = round(result, 10)
-            
-            # Determine result type for display
-            result_type = type(result).__name__
-            
-            # Create response
-            response = f"🧮 **Calculator**\n\n"
-            response += f"📝 **Expression:** `{original_expression}`\n"
-            response += f"✅ **Result:** `{result}`\n"
-            
-            # Add additional info for certain results
-            if isinstance(result, (int, float)):
-                if result > 1000000:
-                    response += f"📊 **Scientific:** `{result:.2e}`\n"
-                if isinstance(result, float) and not result.is_integer():
-                    response += f"🔢 **Type:** Decimal\n"
-                elif isinstance(result, int):
-                    response += f"🔢 **Type:** Integer\n"
-                    # Add binary and hex for integers
-                    if 0 <= result <= 1000000:
-                        response += f"💾 **Binary:** `{bin(result)}`\n"
-                        response += f"🔣 **Hex:** `{hex(result)}`\n"
-            
-            await edit_or_reply(message, response)
-            
-        except ZeroDivisionError:
-            await edit_or_reply(
-                message,
-                f"❌ **Division by zero**\n\n"
-                f"📝 **Expression:** `{original_expression}`\n\n"
-                f"⚠️ Cannot divide by zero\n\n"
-                f"💡 Check your expression and try again"
-            )
-        except ValueError as e:
-            await edit_or_reply(
-                message,
-                f"❌ **Invalid value**\n\n"
-                f"📝 **Expression:** `{original_expression}`\n\n"
-                f"⚠️ **Error:** `{str(e)}`\n\n"
-                f"💡 Check if your values are in valid range"
-            )
-        except SyntaxError:
-            await edit_or_reply(
-                message,
-                f"❌ **Syntax error**\n\n"
-                f"📝 **Expression:** `{original_expression}`\n\n"
-                f"⚠️ Invalid mathematical expression\n\n"
-                f"💡 **Tips:**\n"
-                f"• Use parentheses for grouping: `(2+3)*4`\n"
-                f"• Use ** for power: `2**8`\n"
-                f"• Check function syntax: `sqrt(16)`"
-            )
-        except NameError as e:
-            await edit_or_reply(
-                message,
-                f"❌ **Unknown function or variable**\n\n"
-                f"📝 **Expression:** `{original_expression}`\n\n"
-                f"⚠️ **Error:** `{str(e)}`\n\n"
-                f"💡 Use `{HARDCODED_PREFIXES[0]}calc` to see available functions"
-            )
-            
+        # Parse the expression as an AST
+        parsed = ast.parse(expression, mode='eval')
+
+        # Check for dangerous operations
+        for node in ast.walk(parsed):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                if node.func.id not in safe_namespace:
+                    return await edit_or_reply(
+                        message,
+                        f"❌ **Unsafe operation detected**\n\n"
+                        f"⚠️ Function `{node.func.id}` is not allowed\n\n"
+                        f"💡 Use `{HARDCODED_PREFIXES[0]}calc` for available functions"
+                    )
+
+        # Evaluate the expression
+        result = eval(compile(parsed, '<string>', 'eval'), {"__builtins__": {}}, safe_namespace)
+
+        # Normalize float results
+        if isinstance(result, float):
+            result = int(result) if result.is_integer() else round(result, 10)
+
+        await edit_or_reply(message, f"🧮 `{original_expression}` = `{result}`")
+
     except Exception as e:
         await edit_or_reply(
             message,

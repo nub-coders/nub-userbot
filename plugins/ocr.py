@@ -7,42 +7,38 @@ from PIL import Image
 from config import *
 from tools import *
 
-class OCRTool:
-    """Extract text from images/documents"""
-    def __init__(self, client):
-        self.client = client
+async def extract_text(client, message, language='eng'):
+    """
+    Extract text from an image or document using OCR
 
-    async def extract_text(self, message, language='eng'):
-        """
-        Extract text from an image or document using OCR
-        
-        :param message: Telegram message with image/document
-        :param language: Language for OCR (default is English)
-        :return: Extracted text
-        """
-        reply = message.reply_to_message
-        if not (reply.photo or reply.document):
-            return await message.edit("❗ Reply to an image/document")
-        
-        media = await reply.download()
-        
-        try:
-            # Check if document is an image
-            if reply.document and not reply.document.mime_type.startswith('image'):
-                return await message.edit("❗ Document must be an image type")
-            
-            # Extract text with specified language
-            text = pytesseract.image_to_string(Image.open(media), lang=language)
-            
-            return text.strip() if text else ""
-        
-        except Exception as e:
-            await message.edit(f"❌ Error: {e}")
-            return ""
-        finally:
-            # Ensure media file is removed
-            if os.path.exists(media):
-                os.remove(media)
+    :param client: Pyrogram client
+    :param message: Telegram message with image/document
+    :param language: Language for OCR (default is English)
+    :return: Extracted text
+    """
+    reply = message.reply_to_message
+    if not (reply.photo or reply.document):
+        return await message.edit("❗ Reply to an image/document")
+
+    media = await reply.download()
+
+    try:
+        # Check if document is an image
+        if reply.document and not reply.document.mime_type.startswith('image'):
+            return await message.edit("❗ Document must be an image type")
+
+        # Extract text with specified language
+        text = pytesseract.image_to_string(Image.open(media), lang=language)
+
+        return text.strip() if text else ""
+
+    except Exception as e:
+        await message.edit(f"❌ Error: {e}")
+        return ""
+    finally:
+        # Ensure media file is removed
+        if os.path.exists(media):
+            os.remove(media)
 
 # Telegram command handler
 @Client.on_message(filters.command("ocr") & filters.me)
@@ -55,8 +51,7 @@ async def ocr_handler(client, message):
         progress_msg = await message.reply_text(f"🔍 Extracting text ({lang})...")
 
         # Process
-        ocr = OCRTool(client)
-        text = await ocr.extract_text(message, language=lang)
+        text = await extract_text(client, message, language=lang)
 
         # Show result
         await progress_msg.edit_text(

@@ -12,7 +12,6 @@ import imageio_ffmpeg as ffmpeg
 import inspect
 import json
 import logging
-import magic
 import math
 import os
 import pymongo
@@ -158,6 +157,53 @@ create_raid_filter = filters.create(
 create_custom_filter = filters.create(lambda _, __, message: re.match(getuser_data(message.from_user.id).get("save_com", "^(Wow|wow)$"), message.text) if message.from_user else False)
 
 
+def build_media_caption(from_user, chat, message, is_private, include_caption=True, recipient=None):
+    """Build the '📥 Media Saved' caption/details block.
+
+    :param is_private: whether the source chat is a private chat
+    :param include_caption: append the original message caption/text if present
+    :param recipient: if provided (and is_private), include recipient info
+    """
+    caption = f"📥 **Media Saved**\n\n"
+    caption += f"👤 **From:** {from_user.first_name}"
+    if from_user.last_name:
+        caption += f" {from_user.last_name}"
+    if from_user.username:
+        caption += f" (@{from_user.username})"
+    caption += f"\n🆔 **User ID:** `{from_user.id}`\n"
+
+    if is_private:
+        if recipient is not None:
+            caption += f"\n👥 **To:** {recipient.first_name}"
+            if recipient.last_name:
+                caption += f" {recipient.last_name}"
+            if recipient.username:
+                caption += f" (@{recipient.username})"
+            caption += f"\n🆔 **Recipient ID:** `{recipient.id}`\n"
+        caption += f"💬 **Chat:** Private Chat\n"
+    else:
+        caption += f"💬 **Chat:** {chat.title or 'Unknown'}\n"
+        if chat.username:
+            caption += f"🔗 **Username:** @{chat.username}\n"
+
+    caption += f"🆔 **Chat ID:** `{chat.id}`\n"
+    caption += f"#️⃣ **Message ID:** `{message.id}`\n"
+
+    if message.date:
+        caption += f"📅 **Date:** {message.date.strftime('%Y-%m-%d %H:%M:%S')}\n"
+
+    if not is_private and chat.username:
+        message_link = f"https://t.me/{chat.username}/{message.id}"
+        caption += f"🔗 **Link:** {message_link}\n"
+
+    if include_caption:
+        original_text = message.text if message.caption is None else message.caption
+        if original_text:
+            caption += f"\n📝 **Caption:** {original_text}\n"
+
+    return caption
+
+
 @Client.on_message(filters.me & filters.text & create_custom_filter)
 async def handle_message(client, message):
     sender = message.from_user.id
@@ -189,30 +235,11 @@ async def handle_message(client, message):
                 from_user = message.from_user
                 chat = message.chat
                 
-                details = f"📥 **Media Saved**\n\n"
-                details += f"👤 **From:** {from_user.first_name}"
-                if from_user.last_name:
-                    details += f" {from_user.last_name}"
-                if from_user.username:
-                    details += f" (@{from_user.username})"
-                details += f"\n🆔 **User ID:** `{from_user.id}`\n"
-                
-                if str(chat.type).endswith("PRIVATE"):
-                    details += f"💬 **Chat:** Private Chat\n"
-                else:
-                    details += f"💬 **Chat:** {chat.title or 'Unknown'}\n"
-                    if chat.username:
-                        details += f"🔗 **Username:** @{chat.username}\n"
-                
-                details += f"🆔 **Chat ID:** `{chat.id}`\n"
-                details += f"#️⃣ **Message ID:** `{message.id}`\n"
-                
-                if message.date:
-                    details += f"📅 **Date:** {message.date.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                
-                if not str(chat.type).endswith("PRIVATE") and chat.username:
-                    message_link = f"https://t.me/{chat.username}/{message.id}"
-                    details += f"🔗 **Link:** {message_link}\n"
+                details = build_media_caption(
+                    from_user, chat, message,
+                    is_private=str(chat.type).endswith("PRIVATE"),
+                    include_caption=False,
+                )
                 
                 await app.send_message(
                     chat_id=sender,
@@ -255,36 +282,11 @@ async def handle_message(client, message):
                     from_user = message.from_user
                     chat = message.chat
                     
-                    caption = f"📥 **Media Saved**\n\n"
-                    caption += f"👤 **From:** {from_user.first_name}"
-                    if from_user.last_name:
-                        caption += f" {from_user.last_name}"
-                    if from_user.username:
-                        caption += f" (@{from_user.username})"
-                    caption += f"\n🆔 **User ID:** `{from_user.id}`\n"
-                    
-                    if str(chat.type).endswith("PRIVATE"):
-                        caption += f"💬 **Chat:** Private Chat\n"
-                    else:
-                        caption += f"💬 **Chat:** {chat.title or 'Unknown'}\n"
-                        if chat.username:
-                            caption += f"🔗 **Username:** @{chat.username}\n"
-                    
-                    caption += f"🆔 **Chat ID:** `{chat.id}`\n"
-                    caption += f"#️⃣ **Message ID:** `{message.id}`\n"
-                    
-                    if message.date:
-                        caption += f"📅 **Date:** {message.date.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                    
-                    if not str(chat.type).endswith("PRIVATE") and chat.username:
-                        message_link = f"https://t.me/{chat.username}/{message.id}"
-                        caption += f"🔗 **Link:** {message_link}\n"
-                    
-                    # Add original caption/text if exists
-                    original_text = message.text if message.caption is None else message.caption
-                    if original_text:
-                        caption += f"\n📝 **Caption:** {original_text}\n"
-                    
+                    caption = build_media_caption(
+                        from_user, chat, message,
+                        is_private=str(chat.type).endswith("PRIVATE"),
+                    )
+
                     if os.path.getsize(file_path) <= 2000000000:
                         if file_extension.lower() in ['jpg', 'jpeg', 'png', 'gif']:
                             await app.send_photo(chat_id=sender, photo=file_path, caption=caption, progress=progress_bar)
@@ -992,78 +994,10 @@ async def generate_quote(client, payload: Dict[str, Any], user_dir: str) -> Opti
     return None
 
 
-class Timer:
-    def __init__(self, time_between=2):
-        self.start_time = time.time()
-        self.time_between = time_between
-
-    def can_send(self):
-        if time.time() > (self.start_time + self.time_between):
-            self.start_time = time.time()
-            return True
-        return False
 
 
 
 
-
-
-
-
-
-def get_args_from_caret(message):
-    """Extract arguments from prefixed commands (supports all HARDCODED_PREFIXES)"""
-    if not message.text:
-        return []
-    
-    # Check if message starts with any hardcoded prefix
-    first_char = message.text[0]
-    if first_char not in HARDCODED_PREFIXES:
-        return []
-    
-    # Remove the prefix and split into command and args
-    text = message.text[1:]  # Remove prefix
-    parts = text.split()
-    
-    if len(parts) <= 1:
-        return []
-    
-    return parts[1:]  # Return everything after the command
-
-def get_command_from_caret(message):
-    """Extract command name from prefixed commands and log it (supports all HARDCODED_PREFIXES).
-    Returns empty string when message has no recognized prefix.
-    """
-    if not message.text:
-        return ""
-    
-    # Check if message starts with any hardcoded prefix
-    first_char = message.text[0]
-    if first_char not in HARDCODED_PREFIXES:
-        return ""
-
-    text = message.text[1:]  # Remove prefix
-    parts = text.split()
-
-    if not parts:
-        return ""
-
-    command = parts[0]
-
-    # Lightweight logging for debugging
-    try:
-        # Logger preferred (shows up in Docker logs)
-        logger.info(f"[command] prefix='{first_char}' command='{command}' text='{message.text[:120]}'")
-    except Exception:
-        pass
-    # Also print once for local visibility
-    # Optional debug output (already logged above); retained behind logger only
-    try:
-        logger.debug(f"[get_command_from_caret] text='{message.text}' -> command='{command}'")
-    except Exception:
-        pass
-
-    return command  # Return the command name
 
 
 
@@ -1199,14 +1133,6 @@ def set_user_data(user_id, key, value):
     user_sessions.update_one({"user_id": user_id}, {"$set": {key: value}}, upsert=True)
 
 # Update functions to interact with MongoDB
-
-def set_gvar(user_id, key, value):
-    set_user_data(user_id, key, value)
-
-
-
-
-mime = magic.Magic(mime=True)
 
 
 
@@ -1383,73 +1309,15 @@ async def auto_download_media(client, message: Message):
         from_user = message.from_user
         chat = message.chat
         
+        is_private = chat.type == enums.ChatType.PRIVATE
+
         # Caption for saved messages (without recipient info)
-        caption_saved = f"📥 **Media Saved**\n\n"
-        caption_saved += f"👤 **From:** {from_user.first_name}"
-        if from_user.last_name:
-            caption_saved += f" {from_user.last_name}"
-        if from_user.username:
-            caption_saved += f" (@{from_user.username})"
-        caption_saved += f"\n🆔 **User ID:** `{from_user.id}`\n"
-        
-        if chat.type == enums.ChatType.PRIVATE:
-            caption_saved += f"💬 **Chat:** Private Chat\n"
-        else:
-            caption_saved += f"💬 **Chat:** {chat.title or 'Unknown'}\n"
-            if chat.username:
-                caption_saved += f"🔗 **Username:** @{chat.username}\n"
-        
-        caption_saved += f"🆔 **Chat ID:** `{chat.id}`\n"
-        caption_saved += f"#️⃣ **Message ID:** `{message.id}`\n"
-        
-        if message.date:
-            caption_saved += f"📅 **Date:** {message.date.strftime('%Y-%m-%d %H:%M:%S')}\n"
-        
-        if chat.type != enums.ChatType.PRIVATE and chat.username:
-            message_link = f"https://t.me/{chat.username}/{message.id}"
-            caption_saved += f"🔗 **Link:** {message_link}\n"
-        
-        # Add original caption/text if exists
-        original_text = message.text if message.caption is None else message.caption
-        if original_text:
-            caption_saved += f"\n📝 **Caption:** {original_text}\n"
-        
+        caption_saved = build_media_caption(from_user, chat, message, is_private)
+
         # Caption for group/channel (with recipient info for private chats)
-        caption_group = f"📥 **Media Saved**\n\n"
-        caption_group += f"👤 **From:** {from_user.first_name}"
-        if from_user.last_name:
-            caption_group += f" {from_user.last_name}"
-        if from_user.username:
-            caption_group += f" (@{from_user.username})"
-        caption_group += f"\n🆔 **User ID:** `{from_user.id}`\n"
-        
-        # Add recipient info for private chats
-        if chat.type == enums.ChatType.PRIVATE:
-            caption_group += f"\n👥 **To:** {client.me.first_name}"
-            if client.me.last_name:
-                caption_group += f" {client.me.last_name}"
-            if client.me.username:
-                caption_group += f" (@{client.me.username})"
-            caption_group += f"\n🆔 **Recipient ID:** `{client.me.id}`\n"
-            caption_group += f"💬 **Chat:** Private Chat\n"
-        else:
-            caption_group += f"💬 **Chat:** {chat.title or 'Unknown'}\n"
-            if chat.username:
-                caption_group += f"🔗 **Username:** @{chat.username}\n"
-        
-        caption_group += f"🆔 **Chat ID:** `{chat.id}`\n"
-        caption_group += f"#️⃣ **Message ID:** `{message.id}`\n"
-        
-        if message.date:
-            caption_group += f"📅 **Date:** {message.date.strftime('%Y-%m-%d %H:%M:%S')}\n"
-        
-        if chat.type != enums.ChatType.PRIVATE and chat.username:
-            message_link = f"https://t.me/{chat.username}/{message.id}"
-            caption_group += f"🔗 **Link:** {message_link}\n"
-        
-        # Add original caption/text if exists
-        if original_text:
-            caption_group += f"\n📝 **Caption:** {original_text}\n"
+        caption_group = build_media_caption(
+            from_user, chat, message, is_private, recipient=client.me
+        )
 
         # Define send methods mapping
         send_methods = {
@@ -1509,18 +1377,6 @@ async def auto_download_media(client, message: Message):
         logger.error(f"Error in auto_download_media handler: {e}")
 
 
-# Define the handler function
-def create_channel_custom_filter():
-    def filter_func(_, client, message):
-        user_id = client.me.id
-        user_data = getuser_data(user_id)
-        channels = user_data.get("channel", [])
-        if not channels:  # Check if channels list is empty
-            return False
-        
-        return message.chat.id in channels
-
-    return filters.create(filter_func)
 
 
 
@@ -1956,56 +1812,48 @@ logger = logging.getLogger(__name__)
 # Rate limiting
 COOLDOWN_SECONDS = 10  # Minimum seconds between requests
 
-# Command-to-Model Mapping with improved descriptions
+# Command-to-Model Mapping
+DEFAULT_MAX_TOKENS = 1200
+
 ai_commands = {
     "chat": {
-        "description": "General conversational AI responses",
-        "max_tokens": 1200,
+        "max_tokens": DEFAULT_MAX_TOKENS,
         "system_prompt": "You are a helpful assistant."
     },
     "reason": {
-        "description": "Step-by-step logical problem-solving",
-        "max_tokens": 1200,
+        "max_tokens": DEFAULT_MAX_TOKENS,
         "system_prompt": "You are a logical reasoning assistant. Analyze problems step-by-step."
     },
     "summarize": {
-        "description": "Condensing text to key points",
-        "max_tokens": 1200,
+        "max_tokens": DEFAULT_MAX_TOKENS,
         "system_prompt": "Summarize the following text concisely while preserving all key information."
     },
     "translate": {
-        "description": "Language translation",
-        "max_tokens": 1200,
+        "max_tokens": DEFAULT_MAX_TOKENS,
         "system_prompt": "Translate the following text accurately, maintaining the original meaning and tone."
     },
     "code": {
-        "description": "Generating or fixing code with explanations",
-        "max_tokens": 1200,
+        "max_tokens": DEFAULT_MAX_TOKENS,
         "system_prompt": "You are a programming assistant. Generate clear, efficient, and well-commented code."
     },
     "write": {
-        "description": "Creating high-quality content",
-        "max_tokens": 1200,
+        "max_tokens": DEFAULT_MAX_TOKENS,
         "system_prompt": "Create well-structured, engaging content based on the given topic or requirements."
     },
     "analysis": {
-        "description": "In-depth data and content analysis",
-        "max_tokens": 1200,
+        "max_tokens": DEFAULT_MAX_TOKENS,
         "system_prompt": "Analyze the following information in detail, identifying patterns, insights, and implications."
     },
     "answer": {
-        "description": "Comprehensive responses to complex queries",
-        "max_tokens": 1200,
+        "max_tokens": DEFAULT_MAX_TOKENS,
         "system_prompt": "Provide accurate, well-researched answers to the following question."
     },
     "complete": {
-        "description": "Auto-completing text with context awareness",
-        "max_tokens": 1200,
+        "max_tokens": DEFAULT_MAX_TOKENS,
         "system_prompt": "Complete the following text in a natural and contextually appropriate way."
     },
     "extract": {
-        "description": "Extracting key information from text",
-        "max_tokens": 1200,
+        "max_tokens": DEFAULT_MAX_TOKENS,
         "system_prompt": "Extract the most important information, data points, and insights from the following text."
     },
 }
@@ -2020,42 +1868,6 @@ ai_commands = {
 
 
 
-
-class OCRTool:
-    """Extract text from images/documents"""
-    def __init__(self, client):
-        self.client = client
-
-    async def extract_text(self, message, language='eng'):
-        """
-        Extract text from an image or document using OCR
-        
-        :param message: Telegram message with image/document
-        :param language: Language for OCR (default is English)
-        :return: Extracted text
-        """
-        reply = message.reply_to_message
-        if not (reply.photo or reply.document):
-            return await message.edit("Reply to an image/document")
-        
-        media = await reply.download()
-        
-        try:
-            if reply.document and not reply.document.mime_type.startswith('image'):
-                return await message.edit("Document must be an image type")
-            
-            # Extract text with specified language
-            text = pytesseract.image_to_string(Image.open(media), lang=language)
-            
-            return text.strip() if text else ""
-        
-        except Exception as e:
-            await message.edit(f"❌ Error: {e}")
-            return ""
-        finally:
-            # Ensure media file is removed
-            if os.path.exists(media):
-                os.remove(media)
 
 # Telegram command handler
 

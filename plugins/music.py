@@ -62,7 +62,7 @@ from pyrogram.raw.functions.channels import GetFullChannel
 from pyrogram.raw.functions.phone import GetCallConfig, JoinGroupCall, CreateGroupCall, DiscardGroupCall
 from pyrogram.raw.functions.messages import GetStickerSet, GetFullChat
 from pyrogram.raw import functions
-from youtube import handle_youtube, get_video_details, extract_video_id, format_number, format_duration, time_to_seconds
+from youtube import handle_youtube, time_to_seconds
 from pytgcalls import idle, PyTgCalls
 from pytgcalls.types import ChatUpdate, AudioQuality, MediaStream, VideoQuality
 from pytgcalls.exceptions import NoActiveGroupCall, NotInCallError
@@ -146,26 +146,6 @@ def format_duration(duration):
         return f"{minutes:02d}:{seconds:02d}"
     else:
         return f"{seconds:02d}"
-
-
-
-
-def is_url_and_not_youtube_regex(url_string):
-       regex = r"^(?:http(s)?:\/\/)?[\w.-]+(?:\.[\w\.-]+)+[\w\-\._~:/?#[\]@!\$&'\(\)\*\+,;=.]+$"
-       pattern = re.compile(regex)
-
-       try:
-           if pattern.search(url_string): #Verify URL
-               result = urlparse(url_string)  # Parse for domain
-               is_youtube = (
-            "youtube.com" in result.netloc or
-            "youtu.be" in result.netloc
-        )  #
-               return not is_youtube #Return value
-           else:
-               return False
-       except:
-           return False
 
 
 

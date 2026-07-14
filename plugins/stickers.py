@@ -33,34 +33,15 @@ async def tinying(client ,message):
         await bash("lottie_convert.py json.json man.tgs")
         file = "man.tgs"
         os.remove("json.json")
-    elif ik.endswith((".gif", ".mp4")):
-        iik = cv2.VideoCapture(ik)
-        busy = iik.read()
-        cv2.imwrite("i.png", busy)
-        fil = "i.png"
-        im = Image.open(fil)
-        z, d = im.size
-        if z == d:
-            xxx, yyy = 200, 200
-        else:
-            t = z + d
-            a = z / t
-            b = d / t
-            aa = (a * 100) - 50
-            bb = (b * 100) - 50
-            xxx = 200 + 5 * aa
-            yyy = 200 + 5 * bb
-        k = im.resize((int(xxx), int(yyy)))
-        k.save("k.png", format="PNG", optimize=True)
-        im2 = Image.open("k.png")
-        back_im = im1.copy()
-        back_im.paste(im2, (150, 0))
-        back_im.save("o.webp", "WEBP", quality=95)
-        file = "o.webp"
-        os.remove(fil)
-        os.remove("k.png")
     else:
-        im = Image.open(ik)
+        if ik.endswith((".gif", ".mp4")):
+            iik = cv2.VideoCapture(ik)
+            busy = iik.read()
+            cv2.imwrite("i.png", busy)
+            src = "i.png"
+        else:
+            src = ik
+        im = Image.open(src)
         z, d = im.size
         if z == d:
             xxx, yyy = 200, 200
@@ -79,6 +60,8 @@ async def tinying(client ,message):
         back_im.paste(im2, (150, 0))
         back_im.save("o.webp", "WEBP", quality=95)
         file = "o.webp"
+        if src != ik:
+            os.remove(src)
         os.remove("k.png")
     await asyncio.gather(
         NUB.delete(),

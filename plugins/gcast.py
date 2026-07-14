@@ -74,26 +74,19 @@ async def gcast_handler(client, message):
           if flag in ["-all", "-pvt", "-grp"]:
             if dialog.chat.id in blocked_list or dialog.chat.id in admin_ids:
                 bl +=1
-            elif flag == "-all":
-                try:
-                    await message_to_cast.copy(dialog.chat.id)
-                    owo += 1
-                except Exception as e:
-                    sed += 1
-            elif flag == "-pvt" and dialog.chat.type == enums.ChatType.PRIVATE:
-                try:
-                    await message_to_cast.copy(dialog.chat.id)
-                    owo += 1
-                except Exception as e:
-                    sed += 1
-            elif flag == "-grp" and dialog.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-                try:
-                    await message_to_cast.copy(dialog.chat.id)
-                    owo += 1
-                except Exception as e:
-                    sed += 1
-            else:
-               continue
+                continue
+            should_send = (
+                flag == "-all"
+                or (flag == "-pvt" and dialog.chat.type == enums.ChatType.PRIVATE)
+                or (flag == "-grp" and dialog.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP])
+            )
+            if not should_send:
+                continue
+            try:
+                await message_to_cast.copy(dialog.chat.id)
+                owo += 1
+            except Exception as e:
+                sed += 1
           else:
                 return await message.edit(
                 "Please provide gcast flag. \n\nAvailable options: \n• -all : To Gcast in all chats. \n• -pvt : To Gcast in private chats. \n• -grp : To Gcast in groups."

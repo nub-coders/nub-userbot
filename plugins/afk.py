@@ -1,5 +1,4 @@
 
-from pyrogram.handlers import MessageHandler
 from config import *
 from tools import *
 
@@ -43,8 +42,6 @@ async def afk(client, message):
 
     user_sessions.update_one({"user_id": client.me.id}, {"$set": {"afk": afk_info}}, upsert=True)
     await message.edit(f"<b>I'm going AFK.\n" f"Reason:</b> <i>{reason}</i>")
-    my_handler = MessageHandler(afk_handler, filters.mentioned & ~filters.channel & ~filters.me & ~filters.bot & ~is_support)
-    client.add_handler(my_handler)
 
 @Client.on_message(filters.command("unafk") & filters.me)
 async def unafk(client, message):
@@ -68,7 +65,5 @@ async def unafk(client, message):
         }
 
         user_sessions.update_one({"user_id": client.me.id}, {"$set": {"afk": afk_info}}, upsert=True)
-        my_handler = MessageHandler(afk_handler, filters.mentioned & ~filters.channel & ~filters.me & ~filters.bot & ~is_support)
-        client.remove_handler(my_handler)
     else:
         await message.edit("<b>You weren't AFK</b>")

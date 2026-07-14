@@ -1,8 +1,6 @@
 
 import os
-import json
 import time
-import logging
 import requests
 from pyrogram import Client, filters
 from pyrogram.errors import ChatForwardsRestricted, FileReferenceExpired
@@ -10,22 +8,7 @@ from convopyro import Conversation, listen_message
 from config import *
 from tools import *
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s - [%(filename)s:%(lineno)d]'
-)
-logger = logging.getLogger("userbot")
-
 current_dir = ggg
-
-def get_file_name_from_url(url):
-        response = requests.head(url, allow_redirects=True)
-        if 'Content-Disposition' in response.headers:
-            content_disposition = response.headers['Content-Disposition']
-            filename = content_disposition.split('filename=')[-1].strip('"')
-            return filename
-        else:
-            return url.split('/')[-1]
 
 # Pyrogram client setup
 create_channel_filter = filters.create(

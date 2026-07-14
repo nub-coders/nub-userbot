@@ -17,7 +17,7 @@ Usage:
     await message.edit(Msg.ERR_NO_GROUP_CALL)
     await message.edit(Msg.ERR_ADMIN_REQUIRED)
     styled = font.smallcaps("Hello World")
-    styled = font.cursive("Playing")
+    styled = font.bold_cursive("Playing")
 """
 import re
 import html
@@ -71,15 +71,8 @@ from utils.custom_emojis import (
 _NORMAL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 
 _SMALLCAPS = "ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀsᴛᴜᴠᴡxʏᴢᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀsᴛᴜᴠᴡxʏᴢ0123456789"
-_SUPERSCRIPT = "ᴬᴮᶜᴰᴱᶠᴳᴴᴵᴶᴷᴸᴹᴺᴼᴾᵠᴿˢᵀᵁⱽᵂˣʸᶻᵃᵇᶜᵈᵉᶠᵍʰᶦʲᵏˡᵐⁿᵒᵖᵠʳˢᵗᵘᵛʷˣʸᶻ⁰¹²³⁴⁵⁶⁷⁸⁹"
-_BUBBLES = "ⒶⒷⒸⒹⒺⒻⒼⒽⒾⒿⓀⓁⓂⓃⓄⓅⓆⓇⓈⓉⓊⓋⓌⓍⓎⓏⓐⓑⓒⓓⓔⓕⓖⓗⓘⓙⓚⓛⓜⓝⓞⓟⓠⓡⓢⓣⓤⓥⓦⓧⓨⓩ0123456789"
-_BLACKBUBBLES = "🅐🅑🅒🅓🅔🅕🅖🅗🅘🅙🅚🅛🅜🅝🅞🅟🅠🅡🅢🅣🅤🅥🅦🅧🅨🅩🅐🅑🅒🅓🅔🅕🅖🅗🅘🅙🅚🅛🅜🅝🅞🅟🅠🅡🅢🅣🅤🅥🅦🅧🅨🅩0123456789"
-_CURSIVE = "𝒜ℬ𝒞𝒟ℰℱ𝒢ℋℐ𝒥𝒦ℒℳ𝒩𝒪𝒫𝒬ℛ𝒮𝒯𝒰𝒱𝒲𝒳𝒴𝒵𝒶𝒷𝒸𝒹ℯ𝒻ℊ𝒽𝒾𝒿𝓀𝓁𝓂𝓃ℴ𝓅𝓆𝓇𝓈𝓉𝓊𝓋𝓌𝓍𝓎𝓏0123456789"
 _BOLD_CURSIVE = "𝓐𝓑𝓒𝓓𝓔𝓕𝓖𝓗𝓘𝓙𝓚𝓛𝓜𝓝𝓞𝓟𝓠𝓡𝓢𝓣𝓤𝓥𝓦𝓧𝓨𝓩𝓪𝓫𝓬𝓭𝓮𝓯𝓰𝓱𝓲𝓳𝓴𝓵𝓶𝓷𝓸𝓹𝓺𝓻𝓼𝓽𝓾𝓿𝔀𝔁𝔂𝔃0123456789"
-_FRAKTUR = "𝔄𝔅ℭ𝔇𝔈𝔉𝔊ℌℑ𝔍𝔎𝔏𝔐𝔑𝔒𝔓𝔔ℜ𝔖𝔗𝔘𝔙𝔚𝔛𝔜ℨ𝔞𝔟𝔠𝔡𝔢𝔣𝔤𝔥𝔦𝔧𝔨𝔩𝔪𝔫𝔬𝔭𝔮𝔯𝔰𝔱𝔲𝔳𝔴𝔵𝔶𝔷0123456789"
-_GOTHIC = "𝕬𝕭𝕮𝕯𝕰𝕱𝕲𝕳𝕴𝕵𝕶𝕷𝕸𝕹𝕺𝕻𝕼𝕽𝕾𝕿𝖀𝖁𝖂𝖃𝖄𝖅𝖆𝖇𝖈𝖉𝖊𝖋𝖌𝖍𝖎𝖏𝖐𝖑𝖒𝖓𝖔𝖕𝖖𝖗𝖘𝖙𝖚𝖛𝖜𝖝𝖞𝖟0123456789"
 _DOUBLE = "𝔸𝔹ℂ𝔻𝔼𝔽𝔾ℍ𝕀𝕁𝕂𝕃𝕄ℕ𝕆ℙℚℝ𝕊𝕋𝕌𝕍𝕎𝕏𝕐ℤ𝕒𝕓𝕔𝕕𝕖𝕗𝕘𝕙𝕚𝕛𝕜𝕝𝕞𝕟𝕠𝕡𝕢𝕣𝕤𝕥𝕦𝕧𝕨𝕩𝕪𝕫𝟘𝟙𝟚𝟛𝟜𝟝𝟞𝟟𝟠𝟡"
-_ANCIENT = list("ꍏꌃꉓꀸꍟꎇꁅꃅꀤꀭꀘ꒒ꎭꈤꂦᖘꆰꋪꌗ꓄ꀎᐯꅏꊼꌩꁴꍏꌃꉓꀸꍟꎇꁅꃅꀤꀭꀘ꒒ꎭꈤꂦᖘꆰꋪꌗ꓄ꀎᐯꅏꊼꌩꁴ")
 
 
 def _translate(text: str, source: str, target) -> str:
@@ -106,41 +99,13 @@ class _Font:
         """ᴀʙᴄᴅᴇꜰ — Small-caps style (upper & lower → phonetic IPA)"""
         return _translate(text, _NORMAL, _SMALLCAPS)
 
-    def superscript(self, text: str) -> str:
-        """ᴬᴮᶜ — Superscript style"""
-        return _translate(text, _NORMAL, _SUPERSCRIPT)
-
-    def cursive(self, text: str) -> str:
-        """𝒞𝓊𝓇𝓈𝒾𝓋𝑒 — Script/cursive style"""
-        return _translate(text, _NORMAL, _CURSIVE)
-
     def bold_cursive(self, text: str) -> str:
         """𝓑𝓸𝓵𝓭 𝓒𝓾𝓻𝓼𝓲𝓿𝓮 — Bold cursive/calligraphic style"""
         return _translate(text, _NORMAL, _BOLD_CURSIVE)
 
-    def fraktur(self, text: str) -> str:
-        """𝔉𝔯𝔞𝔨𝔱𝔲𝔯 — Fraktur/blackletter style"""
-        return _translate(text, _NORMAL, _FRAKTUR)
-
-    def gothic(self, text: str) -> str:
-        """𝖌𝖔𝖙𝖍𝖎𝖈 — Gothic/old-English style"""
-        return _translate(text, _NORMAL, _GOTHIC)
-
     def double(self, text: str) -> str:
         """𝔻𝕠𝕦𝕓𝕝𝕖 — Double-struck style"""
         return _translate(text, _NORMAL, _DOUBLE)
-
-    def bubbles(self, text: str) -> str:
-        """Ⓑⓤⓑⓑⓛⓔⓢ — Circled-letter bubbles"""
-        return _translate(text, _NORMAL, _BUBBLES)
-
-    def blackbubbles(self, text: str) -> str:
-        """🅑🅛🅐🅒🅚 🅑🅤🅑🅑🅛🅔🅢 — Filled black bubbles"""
-        return _translate(text, _NORMAL, _BLACKBUBBLES)
-
-    def ancient(self, text: str) -> str:
-        """ꍏꈤꉓꀤꍟꈤ꓄ — Yi/Bopomofo exotic charset"""
-        return _translate(text, _NORMAL, _ANCIENT)
 
 
 #: Singleton instance; import and call methods directly.

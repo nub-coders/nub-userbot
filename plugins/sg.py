@@ -1,42 +1,7 @@
 
-from pyrogram.errors import RPCError
-from pyrogram import Client, filters, enums
-from pyrogram.types import Message
+from pyrogram import Client, filters
 from config import *
 from tools import *
-
-@Client.on_message(filters.me & filters.command('sg'))
-@retry()
-async def sg(client: Client, message: Message):
-    lol = await message.edit("<code>Processing user history please wait</code>")
-    if message.reply_to_message and message.reply_to_message.from_user:
-        user_id = message.reply_to_message.from_user.id
-    else:
-        await message.edit(f"<b>Usage: </b><code>sg [id]</code>")
-        return
-    try:
-        await client.send_message(
-            "@SangMata_beta_bot", "/start", parse_mode=enums.ParseMode.MARKDOWN
-        )
-    except RPCError:
-        await lol.edit(
-            "**Please unblock @SangMata_beta_bot and try again**",
-            parse_mode=enums.ParseMode.MARKDOWN,
-        )
-        return
-    id = "@SangMata_beta_bot"
-    chat = message.chat.id
-    await client.send_message(id, user_id, parse_mode=enums.ParseMode.MARKDOWN)
-    await asyncio.sleep(2)
-    async for opt in client.get_chat_history("@SangMata_beta_bot", limit=1):
-        hmm = opt.text
-        if hmm.startswith("Forward"):
-            await lol.edit(
-                "**Unknown error occurred**", parse_mode=enums.ParseMode.MARKDOWN
-            )
-            return
-        await lol.delete()
-        await opt.copy(chat)
 
 @Client.on_message(filters.outgoing & filters.command("info"))
 @retry()

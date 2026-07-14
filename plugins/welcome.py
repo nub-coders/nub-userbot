@@ -3,7 +3,6 @@ import os
 import base64
 import re
 from pyrogram import Client, filters
-from pyrogram.enums import MessageEntityType
 from tools import *
 import magic
 
@@ -66,57 +65,12 @@ async def set_welcome_handler(client, message):
 
         # Handle text if present
         if replied_msg.text or replied_msg.caption:
-            welcome_text = (replied_msg.text or replied_msg.caption).strip()
+            text_obj = replied_msg.text or replied_msg.caption
+            welcome_text = text_obj.strip()
             if len(welcome_text) > 4096:
                 return await message.reply_text("Welcome message too long. Maximum 4096 characters allowed.")
 
-            entities = sorted(
-                (replied_msg.entities or replied_msg.caption_entities or []),
-                key=lambda x: (x.offset, -x.length)
-            )
-
-            ENTITY_TO_HTML = {
-                MessageEntityType.BOLD: ('b', 'b'),
-                MessageEntityType.ITALIC: ('i', 'i'),
-                MessageEntityType.UNDERLINE: ('u', 'u'),
-                MessageEntityType.STRIKETHROUGH: ('s', 's'),
-                MessageEntityType.SPOILER: ('spoiler', 'spoiler'),
-                MessageEntityType.CODE: ('code', 'code'),
-                MessageEntityType.PRE: ('pre', 'pre'),
-                MessageEntityType.BLOCKQUOTE: ('blockquote', 'blockquote')
-            }
-
-            def convert_to_html(text, msg_entities):
-                tag_positions = []
-
-                for entity in msg_entities:
-                    if entity.type in ENTITY_TO_HTML:
-                        start_tag, end_tag = ENTITY_TO_HTML[entity.type]
-
-                        if entity.type == MessageEntityType.PRE and getattr(entity, 'language', None):
-                            tag_positions.append((entity.offset, f'<pre language="{entity.language}">', True))
-                        else:
-                            tag_positions.append((entity.offset, f'<{start_tag}>', True))
-
-                        tag_positions.append((entity.offset + entity.length, f'</{end_tag}>', False))
-
-                tag_positions.sort(key=lambda x: (x[0], x[2]))
-
-                result = []
-                current_pos = 0
-
-                for pos, tag, _ in tag_positions:
-                    if pos > current_pos:
-                        result.append(text[current_pos:pos])
-                    result.append(tag)
-                    current_pos = pos
-
-                if current_pos < len(text):
-                    result.append(text[current_pos:])
-
-                return ''.join(result)
-
-            processed_text = convert_to_html(welcome_text, entities)
+            processed_text = text_obj.html
 
             # Validate placeholders
             ALLOWED_PLACEHOLDERS = {"{name}", "{id}", "{botname}"}

@@ -1,6 +1,4 @@
-import importlib.metadata
 import requests
-import subprocess
 import sys
 import logging
 import os
@@ -53,68 +51,6 @@ def get_video_info(url_or_query: str, max_results: int = 1) -> Tuple[str, str, i
     except requests.RequestException as e:
         logger.error(f"Request failed for video info: {str(e)}")
         return None, None, None, None, None, None, None, None, str(e)
-
-def search_videos(query: str, max_results: int = 5) -> List[Tuple[str, str, str, int, int, str, str]]:
-    """Search videos - returns list of (title, video_id, channel_name, duration, views, thumbnail_url, youtube_link)"""
-    logger.info(f"Searching videos for query: {query[:50]}{'...' if len(query) > 50 else ''} (max_results={max_results})")
-    try:
-        logger.debug(f"Making search API request to {BASE_URL}/search")
-        response = requests.get(
-            f'{BASE_URL}/search',
-            params={'q': query, 'max_results': max_results},
-            timeout=30
-        )
-        response.raise_for_status()
-        data = response.json()
-        logger.debug(f"Search API response status: {response.status_code}")
-
-        if 'error' in data:
-            logger.error(f"Search API returned error: {data.get('error')}")
-            return []
-        
-        results = []
-        for video in data.get('results', []):
-            results.append((
-                video.get('title', 'N/A'),
-                video.get('video_id', 'N/A'),
-                video.get('channel_name', 'N/A'),
-                video.get('duration', 0),
-                video.get('views', 0),
-                video.get('thumbnail', 'N/A'),
-                video.get('youtube_link', 'N/A')
-            ))
-        logger.info(f"Found {len(results)} video results")
-        return results
-    except requests.RequestException as e:
-        logger.error(f"Search request failed: {str(e)}")
-        return []
-
-def get_rate_limit_status() -> Tuple[int, int, int, bool, str]:
-    """Get quota status - returns (daily_limit, requests_used, requests_remaining, is_admin, reset_time)"""
-    logger.debug("Checking rate limit status")
-    try:
-        response = requests.get(
-            f'{BASE_URL}/rate-limit-status',
-            params={'token': API_TOKEN},
-            timeout=10
-        )
-        response.raise_for_status()
-        data = response.json()
-        
-        remaining = data.get('requests_remaining', 0)
-        used = data.get('requests_used', 0)
-        logger.info(f"Rate limit status - Used: {used}, Remaining: {remaining}")
-
-        return (
-            data.get('daily_limit', 0),
-            data.get('requests_used', 0),
-            data.get('requests_remaining', 0),
-            data.get('is_admin', False),
-            data.get('reset_time', 'N/A')
-        )
-    except requests.RequestException as e:
-        logger.error(f"Failed to get rate limit status: {str(e)}")
-        return 0, 0, 0, False, str(e)
 
 def extract_video_id(url):
     """
@@ -216,56 +152,6 @@ def time_to_seconds(time):
     except Exception as e:
         logger.error(f"Error converting time {stringt} to seconds: {str(e)}")
         return 0
-
-def is_ytdlp_updated():
-    """Check if yt-dlp is up to date"""
-    try:
-        # Get installed version
-        installed_version = importlib.metadata.version('yt-dlp')
-        
-        # Get latest version from PyPI
-        response = requests.get('https://pypi.org/pypi/yt-dlp/json', timeout=10)
-        latest_version = response.json()['info']['version']
-        
-        logger.info(f"yt-dlp installed version: {installed_version}")
-        logger.info(f"yt-dlp latest version: {latest_version}")
-        
-        return installed_version == latest_version
-    except Exception as e:
-        logger.error(f"Error checking yt-dlp version: {e}")
-        return False
-
-def update_ytdlp():
-    """Update yt-dlp to the latest version"""
-    try:
-        logger.info("Updating yt-dlp...")
-        result = subprocess.run([
-            sys.executable, "-m", "pip", "install", "-U", "yt-dlp"
-        ], capture_output=True, text=True, timeout=120)
-        
-        if result.returncode == 0:
-            logger.info("yt-dlp updated successfully!")
-            return True
-        else:
-            logger.error(f"Failed to update yt-dlp: {result.stderr}")
-            return False
-    except Exception as e:
-        logger.error(f"Error updating yt-dlp: {e}")
-        return False
-
-async def check_and_update_ytdlp():
-    """Check and update yt-dlp if needed"""
-    try:
-        if not is_ytdlp_updated():
-            logger.info("yt-dlp is outdated, updating...")
-            if update_ytdlp():
-                logger.info("yt-dlp has been updated to the latest version")
-            else:
-                logger.warning("Failed to update yt-dlp, continuing with current version")
-        else:
-            logger.info("yt-dlp is already up to date")
-    except Exception as e:
-        logger.error(f"Error in yt-dlp version check: {e}")
 
 def get_video_details(video_id):
     """

@@ -3,8 +3,6 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 import datetime
 import pytz
-import re
-import time
 from config import *
 from tools import *
 
@@ -23,19 +21,22 @@ async def schedule_message(client: Client, message: Message):
     _, target, time_str, msg_content = command_parts
     
     # Validate time format (HH:MM:SS or HH:MM:SS:CC)
-    standard_time_pattern = re.compile(r'^([0-1]?[0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9])$')
-    extended_time_pattern = re.compile(r'^([0-1]?[0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9]):([0-9][0-9])$')
-    
     hour = 0
     minute = 0
     second = 0
     centisecond = 0
-    
-    if standard_time_pattern.match(time_str):
-        hour, minute, second = map(int, time_str.split(':'))
-    elif extended_time_pattern.match(time_str):
-        hour, minute, second, centisecond = map(int, time_str.split(':'))
-    else:
+
+    try:
+        time_parts = time_str.split(':')
+        if len(time_parts) == 4:
+            parsed = datetime.datetime.strptime(':'.join(time_parts[:3]), "%H:%M:%S")
+            if len(time_parts[3]) != 2:
+                raise ValueError("centiseconds must be two digits")
+            centisecond = int(time_parts[3])
+        else:
+            parsed = datetime.datetime.strptime(time_str, "%H:%M:%S")
+        hour, minute, second = parsed.hour, parsed.minute, parsed.second
+    except ValueError:
         await message.reply("❌ **Invalid time format!**\nUse HH:MM:SS or HH:MM:SS:CC format (24-hour), where CC is centiseconds (00-99).")
         return
     
@@ -63,7 +64,7 @@ async def schedule_message(client: Client, message: Message):
     
     # Get system's local timezone
     system_timezone = datetime.datetime.now().astimezone().tzinfo
-    system_timezone_name = time.tzname[0] if time.daylight else time.tzname[1]
+    system_timezone_name = datetime.datetime.now().astimezone().tzname()
     
     # Get current time in system's timezone
     now = datetime.datetime.now(system_timezone)

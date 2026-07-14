@@ -45,13 +45,22 @@
       "description": "The username of your userbot account (without @) to use in menus",
       "required": false
     },
-    "NUB_YTDLP_API_KEY": {
-      "description": "Optional: API Key for NUB_YTDLP to download YouTube videos",
+    "YT_DLP_API_KEY": {
+      "description": "Optional: API Key for YT_DLP to download YouTube videos",
       "required": false
     },
-    "NUB_YTDLP_BASE_URL": {
-      "description": "Optional: Base URL for NUB_YTDLP API (defaults to http://api.nubcoders.com)",
+    "YT_DLP_BASE_URL": {
+      "description": "Optional: Base URL for YT_DLP API (defaults to http://api.nubcoders.com)",
       "value": "http://api.nubcoders.com",
+      "required": false
+    },
+    "MONGO_URI": {
+      "description": "Optional: MongoDB connection URI for persistent storage (falls back to in-memory storage if unset)",
+      "required": false
+    },
+    "DB_NAME": {
+      "description": "Optional: MongoDB database name",
+      "value": "userbot",
       "required": false
     }
   },

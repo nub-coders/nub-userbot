@@ -1,7 +1,10 @@
 import os
 import time
+import logging
 import pymongo
 import certifi
+
+logger = logging.getLogger(__name__)
 
 # Telegram API credentials
 # Required: Get these from https://my.telegram.org
@@ -12,16 +15,14 @@ API_HASH = os.getenv('API_HASH', '')
 # Optional: Get from https://aistudio.google.com/app/apikey (needed for AI features)
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 
-# Optional: NUB_YTDLP API Key for YouTube downloads
-NUB_YTDLP_API_KEY = os.getenv('NUB_YTDLP_API_KEY', os.getenv('NUBYTDLP_API', ''))
+# Optional: YT_DLP API Key for YouTube downloads
+YT_DLP_API_KEY = os.getenv('YT_DLP_API_KEY', '')
 
-# NUB_YTDLP Base URL configuration
-NUB_YTDLP_BASE_URL = os.getenv('NUB_YTDLP_BASE_URL', os.getenv('YTDLP_BASE_URL', 'http://api.nubcoders.com'))
-
-# Optional: Backward-compatible alias for older environment variable names
-YTDLP_BASE_URL = NUB_YTDLP_BASE_URL
+# YT_DLP Base URL configuration
+YT_DLP_BASE_URL = os.getenv('YT_DLP_BASE_URL', 'http://api.nubcoders.com')
 
 # MongoDB connection (optional)
+# Leave MONGO_URI empty to run fully in-memory (data is lost on restart).
 MONGO_URI = os.getenv('MONGO_URI', '')
 DB_NAME = os.getenv('DB_NAME', 'userbot')
 
@@ -96,10 +97,25 @@ class _MemoryCollection:
         return [d for d in self._docs.values() if all(d.get(k) == v for k, v in filt.items())]
 
 if MONGO_URI:
-    mongo_client = pymongo.MongoClient(MONGO_URI, tlsCAFile=certifi.where())
-    db = mongo_client[DB_NAME]
-    user_sessions = db['user_sessions']
+    try:
+        mongo_client = pymongo.MongoClient(
+            MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=5000
+        )
+        # Force an actual connection so a bad URI/unreachable host fails fast here
+        mongo_client.admin.command("ping")
+        db = mongo_client[DB_NAME]
+        user_sessions = db["user_sessions"]
+        logger.info("Connected to MongoDB (database: %s)", DB_NAME)
+    except Exception as e:
+        logger.warning(
+            "MongoDB connection failed (%s); falling back to in-memory storage. "
+            "Data will not persist across restarts.", e
+        )
+        mongo_client = None
+        db = None
+        user_sessions = _MemoryCollection()
 else:
+    logger.info("No MONGO_URI set; using in-memory storage. Data will not persist across restarts.")
     mongo_client = None
     db = None
     user_sessions = _MemoryCollection()

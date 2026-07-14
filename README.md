@@ -77,6 +77,14 @@ A feature-rich Telegram userbot built with Pyrogram, offering a wide range of au
    - Enter your session string when prompted
    - The bot will start and load all plugins
 
+## 🚢 Deploy
+
+[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/nub-coders/nub-userbot)
+
+[![Deploy to Deplox](https://deplox.nubcoders.com/deploy/button.svg)](https://app.nubcoders.com/deploy?template=https://github.com/nub-coders/nub-userbot)
+
+- A `Procfile` and `app.json` are included for easy deployment (see repository root).
+
 ## ⚙️ Configuration
 
 ### Essential Settings

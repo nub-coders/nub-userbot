@@ -160,6 +160,4 @@ BOT_TOKEN = os.getenv('BOT_TOKEN', '')
 # Required: Your Pyrogram String Session
 SESSION_STR = os.getenv('SESSION_STR', '')
 
-# Optional: The username of your userbot account (without @) to use in menus
-USERBOT_USERNAME = os.getenv('USERBOT_USERNAME', '')
 apps= {}

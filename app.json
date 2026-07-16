@@ -41,10 +41,6 @@
       "value": "nub_coders",
       "required": false
     },
-    "USERBOT_USERNAME": {
-      "description": "The username of your userbot account (without @) to use in menus",
-      "required": false
-    },
     "YT_DLP_API_KEY": {
       "description": "Optional: API Key for YT_DLP to download YouTube videos",
       "required": false

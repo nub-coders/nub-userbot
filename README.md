@@ -110,7 +110,6 @@ All configuration is done through environment variables (or a `.env` file). See 
 - `YT_DLP_API_KEY` / `YT_DLP_BASE_URL` — YouTube download service configuration
 - `MONGO_URI` / `DB_NAME` — MongoDB for persistent storage; leave `MONGO_URI` empty to use in-memory storage (data is lost on restart)
 - `GROUP` / `CHANNEL` — your support group and updates channel usernames (without @)
-- `USERBOT_USERNAME` — your userbot account username (without @) shown in menus
 
 ## 📋 Commands Overview
 

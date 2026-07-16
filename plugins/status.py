@@ -12,9 +12,8 @@ async def alive(client, message):
     await asyncio.sleep(2)
     send = client.send_video if alive_logo.endswith(".mp4") else client.send_photo
     uptime = await get_readable_time((time.time() - StartTime))
-    userbot_link = f"https://t.me/{USERBOT_USERNAME}" if USERBOT_USERNAME else f"tg://user?id={client.me.id}"
     man = (
-        f"""[NUB Userbot ⚡]({userbot_link}) is Up and Running.
+        f"""[NUB Userbot ⚡](tg://user?id={client.me.id}) is Up and Running.
 
 <b>{alive_text}</b>
 

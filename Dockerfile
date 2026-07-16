@@ -7,6 +7,7 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \
+    gcc \
     ffmpeg \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*

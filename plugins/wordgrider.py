@@ -17,7 +17,7 @@ from utils.message import Msg
 
 # ── Gemini Vision config ──
 GEMINI_MODEL = "gemini-2.0-flash"
-gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+gemini_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

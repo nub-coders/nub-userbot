@@ -1803,7 +1803,7 @@ API_KEY = GEMINI_API_KEY
 MODEL = "gemini-2.0-flash"
 
 # Initialize the Gemini client (google-genai SDK)
-gemini_client = genai.Client(api_key=API_KEY)
+gemini_client = genai.Client(api_key=API_KEY) if API_KEY else None
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)

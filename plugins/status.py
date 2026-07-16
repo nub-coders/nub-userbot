@@ -5,7 +5,7 @@ from pyrogram import __version__ as versipyro
 from config import *
 from tools import *
 
-@Client.on_message(filters.command(["alive", "awake"]) & filters.me)
+@Client.on_message(filters.command(["alive", "awake"], prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def alive(client, message):
     user_id, alive_logo, emoji, alive_text = await get_globals(client)
@@ -36,7 +36,7 @@ async def alive(client, message):
     except BaseException:
         await xx.edit(man, disable_web_page_preview=True)
 
-@Client.on_message(filters.command("ping") & filters.me)
+@Client.on_message(filters.command("ping", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def pingme(client, message):
     # Calculate uptime
@@ -117,7 +117,7 @@ async def get_globals(client):
     alive_text = gvarstatus(user_id, "ALIVE_TEXT_CUSTOM") or "Hey, I am alive."
     return user_id, alive_logo, emoji, alive_text
 
-@Client.on_message(filters.command("setalivetext") & filters.me)
+@Client.on_message(filters.command("setalivetext", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def setalivetext(client,message):
     user_id = client.me.id
@@ -138,7 +138,7 @@ async def setalivetext(client,message):
     await NUB.edit(f"**Successfully customized ALIVE TEXT to** `{text}`")
     
 
-@Client.on_message(filters.command("setemoji") & filters.me)
+@Client.on_message(filters.command("setemoji", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def setemoji(client,message):
     user_id = client.me.id
@@ -156,7 +156,7 @@ async def setemoji(client,message):
     await NUB.edit(f"**Successfully customized ALIVE EMOJI to** {emoji}")
 
 
-@Client.on_message(filters.command('resetallalive') & filters.me)
+@Client.on_message(filters.command('resetallalive', prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def deletealivekeys(client, message):
     user_id = client.me.id

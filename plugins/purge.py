@@ -6,7 +6,7 @@ from pyrogram.errors import FloodWait
 from config import *
 from tools import *
 
-@Client.on_message(filters.command("purge") & filters.me)
+@Client.on_message(filters.command("purge", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def purge(client, message):
     chunk = []
@@ -25,7 +25,7 @@ async def purge(client, message):
     if len(chunk) > 0:
         await client.delete_messages(message.chat.id, chunk)
 
-@Client.on_message(filters.command("delall") & filters.me & filters.reply)
+@Client.on_message(filters.command("delall", prefixes=HARDCODED_PREFIXES) & filters.me & filters.reply)
 @retry()
 async def delete_all_messages(client: Client, message: Message):
     try:
@@ -57,7 +57,7 @@ async def delete_all_messages(client: Client, message: Message):
     except Exception:
         pass
 
-@Client.on_message(filters.command("del") & filters.me & filters.reply)
+@Client.on_message(filters.command("del", prefixes=HARDCODED_PREFIXES) & filters.me & filters.reply)
 @retry()
 async def delete_message(client: Client, message: Message):
     if message.reply_to_message:

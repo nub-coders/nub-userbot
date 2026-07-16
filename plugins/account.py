@@ -43,7 +43,7 @@ async def categorize_blocked_users(client, blocked_user_ids):
 
     return users, bots
 
-@Client.on_message(filters.command("stats") & filters.me)
+@Client.on_message(filters.command("stats", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def status(client, message):
     NUB = await message.edit_text("`Collecting stats...`")
@@ -137,7 +137,7 @@ from tools import *
 def format_timestamp(ts):
     return datetime.datetime.utcfromtimestamp(ts).strftime('%B %d, %Y, %H:%M:%S')
 
-@Client.on_message(filters.command("sessions") & filters.me)
+@Client.on_message(filters.command("sessions", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def session_handler(client, message):
     result = await client.invoke(functions.account.GetAuthorizations())

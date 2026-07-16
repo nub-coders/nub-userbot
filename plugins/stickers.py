@@ -14,7 +14,7 @@ from config import *
 from tools import *
 
 
-@Client.on_message(filters.command("tiny") & filters.me)
+@Client.on_message(filters.command("tiny", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def tinying(client ,message):
     reply = message.reply_to_message
@@ -74,7 +74,7 @@ async def tinying(client ,message):
     os.remove(file)
     os.remove(ik)
 
-@Client.on_message(filters.command("mmf") & filters.me)
+@Client.on_message(filters.command("mmf", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def memify(client, message):
     if not message.reply_to_message_id:
@@ -156,7 +156,7 @@ async def add_text_img(image_path, text):
     img.save(final_image, **img_info)
     return final_image
 
-@Client.on_message(filters.command("kang") & filters.me)
+@Client.on_message(filters.command("kang", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def kang(client, message):
     user = client.me

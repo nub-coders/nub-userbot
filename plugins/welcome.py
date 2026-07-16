@@ -32,7 +32,7 @@ async def convert_to_image(message, client):
         print(f"Error converting sticker: {e}")
         return None
 
-@Client.on_message(filters.command("setwelkm") & filters.private & filters.me)
+@Client.on_message(filters.command("setwelkm", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
 async def set_welcome_handler(client, message):
     try:
         sender_id = message.from_user.id
@@ -186,7 +186,7 @@ async def set_welcome_handler(client, message):
         print(f"Error for user {message.from_user.id}: {str(e)}")
         return await message.reply_text(error_msg)
 
-@Client.on_message(filters.command("resetwelkm") & filters.me)
+@Client.on_message(filters.command("resetwelkm", prefixes=HARDCODED_PREFIXES) & filters.me)
 async def reset_welcome_handler(client, message):
     user_id = message.from_user.id
 

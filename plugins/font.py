@@ -48,7 +48,7 @@ styles = {
     'underline': underline
 }
 
-@Client.on_message(filters.command('fonts') & filters.me)
+@Client.on_message(filters.command('fonts', prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def fontss(client, message):
     if message.text.startswith("/fonts"):

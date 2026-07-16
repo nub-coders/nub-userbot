@@ -7,7 +7,7 @@ from pyrogram import enums
 from config import *
 from tools import *
 
-@Client.on_message(filters.command("gcast") & filters.me)
+@Client.on_message(filters.command("gcast", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def gcast_handler(client, message):
     """Handles the /gcast command."""

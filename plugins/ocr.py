@@ -41,7 +41,7 @@ async def extract_text(client, message, language='eng'):
             os.remove(media)
 
 # Telegram command handler
-@Client.on_message(filters.command("ocr") & filters.me)
+@Client.on_message(filters.command("ocr", prefixes=HARDCODED_PREFIXES) & filters.me)
 async def ocr_handler(client, message):
     try:
         # Parse language if provided (default to English)

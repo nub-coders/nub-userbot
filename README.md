@@ -92,7 +92,7 @@ docker compose up -d
 
 [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/nub-coders/nub-userbot)
 
-[![Deploy to Halvo](https://halvo.nubcoders.com/deploy/button.svg)](https://app.nubcoders.com/deploy?template=https://github.com/nub-coders/nub-userbot)
+[![Deploy to Halvo](https://halvo.nubcoders.com/deploy/button.svg)](https://halvo.nubcoders.com/deploy?template=https://github.com/nub-coders/nub-userbot)
 
 - A `Procfile` and `app.json` are included for easy deployment (see repository root).
 

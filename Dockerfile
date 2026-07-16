@@ -8,6 +8,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     git \
     gcc \
+    libmagic1 \
     ffmpeg \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*

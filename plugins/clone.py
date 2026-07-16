@@ -12,7 +12,7 @@ def get_text(message) -> [None, str]:
     parts = message.text.split(None, 1)
     return parts[1] if len(parts) > 1 else None
 
-@Client.on_message(filters.command("clone") & filters.me)
+@Client.on_message(filters.command("clone", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def clone(client, message):
     text = get_text(message)
@@ -58,7 +58,7 @@ async def clone(client, message):
                                 upsert=True
                             )
 
-@Client.on_message(filters.command("revert") & filters.me)
+@Client.on_message(filters.command("revert", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def revert(client, message):
     await message.edit("`Reverting`")

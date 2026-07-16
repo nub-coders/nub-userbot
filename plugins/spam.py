@@ -84,7 +84,7 @@ def get_arg(message) -> [None, str]:
 def is_active_user(user):
     return user.status in (UserStatus.ONLINE, UserStatus.RECENTLY, UserStatus.LAST_WEEK)
 
-@Client.on_message(filters.command(["spam", "statspam", "slowspam"]) & filters.me)
+@Client.on_message(filters.command(["spam", "statspam", "slowspam"], prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def spam(client, message):
     if message.chat.id==-1001806816712 or is_admin(message.chat.id):
@@ -141,7 +141,7 @@ async def spam_text(
         if delay:
             await asyncio.sleep(delay)
 
-@Client.on_message(filters.command("dspam") & filters.me)
+@Client.on_message(filters.command("dspam", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def delaySpam(client, message):
     if len(message.command) < 4:
@@ -167,7 +167,7 @@ async def delaySpam(client, message):
     await message.delete()
     await task
 
-@Client.on_message(filters.command("fastspam") & filters.me)
+@Client.on_message(filters.command("fastspam", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def fastspam(client, message):
     if message.chat.id==-1001806816712 or is_admin(message.chat.id):
@@ -201,7 +201,7 @@ async def fastspam(client, message):
             break
     await asyncio.wait(tasks)
 
-@Client.on_message(filters.command(["tagall","tagadmins","tagactive","tagactiveonly","tagevery"]) & filters.me)
+@Client.on_message(filters.command(["tagall","tagadmins","tagactive","tagactiveonly","tagevery"], prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def mentionall(client, message):
     await message.delete()
@@ -297,7 +297,7 @@ async def mentionall(client, message):
         if chat_id in spam_chats:
             spam_chats.remove(chat_id)
 
-@Client.on_message(filters.command("cancel") & filters.me) 
+@Client.on_message(filters.command("cancel", prefixes=HARDCODED_PREFIXES) & filters.me) 
 @retry()
 async def cancel_spam(client, message):
     if not message.chat.id in spam_chats:
@@ -309,12 +309,12 @@ async def cancel_spam(client, message):
             pass
         return await message.edit("**Dismissing Mention.**")
 
-@Client.on_message(filters.command("raid") & filters.me)
+@Client.on_message(filters.command("raid", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def raid(xspam: Client, e: Message):
     pass
 
-@Client.on_message(filters.command("replyraid") & filters.me)
+@Client.on_message(filters.command("replyraid", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def activate_reply_raid(c: Client,m: Message):
     user_data = user_sessions.find_one({"user_id": c.me.id})

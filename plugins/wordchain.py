@@ -117,7 +117,7 @@ async def wordchain_listener(client, message):
            await bot.send_message(client.me.id,f"ERROR: {e}")
 
 
-@Client.on_message(filters.command("clr") & filters.me)
+@Client.on_message(filters.command("clr", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def reset_used_words(client, message):
     chat_id = message.chat.id

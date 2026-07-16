@@ -27,7 +27,7 @@ async def afk_handler(client, message):
         f"<b>I'm AFK {afk_time}\nReason:</b> <i>{afk_info['reason']}</i>"
     )
 
-@Client.on_message(filters.command("afk") & filters.me)
+@Client.on_message(filters.command("afk", prefixes=HARDCODED_PREFIXES) & filters.me)
 async def afk(client, message):
     if len(message.text.split()) >= 2:
         reason = message.text.split(" ", maxsplit=1)[1]
@@ -43,7 +43,7 @@ async def afk(client, message):
     user_sessions.update_one({"user_id": client.me.id}, {"$set": {"afk": afk_info}}, upsert=True)
     await message.edit(f"<b>I'm going AFK.\n" f"Reason:</b> <i>{reason}</i>")
 
-@Client.on_message(filters.command("unafk") & filters.me)
+@Client.on_message(filters.command("unafk", prefixes=HARDCODED_PREFIXES) & filters.me)
 async def unafk(client, message):
     user_id = message.from_user.id
 

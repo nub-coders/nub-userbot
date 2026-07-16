@@ -132,7 +132,7 @@ message.chat.id, message.from_user.first_name)
                print("Blocking user...")
                await message.delete()
 
-@Client.on_message(filters.command("approve") & filters.private & filters.me)
+@Client.on_message(filters.command("approve", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
 @retry()
 async def approve_user(client, message):
     print("Approving user...")
@@ -164,7 +164,7 @@ async def approve_user(client, message):
         print(f"User {chat_id} added to whitelist (new entry).")
         await message.edit_text("You have been approved and added to the whitelist.")
 
-@Client.on_message(filters.command("disapprove") & filters.private & filters.me)
+@Client.on_message(filters.command("disapprove", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
 @retry()
 async def disapprove_user(client, message):
     chat_id = message.chat.id
@@ -188,7 +188,7 @@ async def disapprove_user(client, message):
         print(f"No data found for user_id {client.me.id}.")
         await message.edit_text("No data found for the bot user.")
 
-@Client.on_message(filters.command("rmall") & filters.private & filters.me)
+@Client.on_message(filters.command("rmall", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
 @retry()
 async def remove_all_whitelisted_users(client, message):
     print("Removing all whitelisted users...")
@@ -205,7 +205,7 @@ async def remove_all_whitelisted_users(client, message):
         print("No whitelisted users to remove.")
         await message.edit_text("There were no whitelisted users to remove.")
 
-@Client.on_message(filters.command("rstall") & filters.private & filters.me)
+@Client.on_message(filters.command("rstall", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
 @retry()
 async def reset_all_users_count(client, message):
     print("Resetting all users' counts to 0...")
@@ -225,7 +225,7 @@ async def reset_all_users_count(client, message):
         print(f"No data found for user_id {client.me.id}.")
         await message.edit_text("No data found for the bot user.")
 
-@Client.on_message(filters.command("rst") & filters.private & filters.me)
+@Client.on_message(filters.command("rst", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
 @retry()
 async def reset_user_count(client, message):
     print("Resetting user count for specific chat...")
@@ -248,7 +248,7 @@ async def reset_user_count(client, message):
         print(f"No data found for user_id {client.me.id}.")
         await message.edit_text("No data found for the bot user.")
 
-@Client.on_message(filters.command("addbl") & filters.me)
+@Client.on_message(filters.command("addbl", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def add_to_blacklist(client, message):
     chat_id = message.chat.id
@@ -274,7 +274,7 @@ async def add_to_blacklist(client, message):
         })
         await message.edit_text(f"{chat.title or chat.first_name} added to blacklist (new entry).")
 
-@Client.on_message(filters.command("rmbl") & filters.me)
+@Client.on_message(filters.command("rmbl", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def remove_from_blacklist(client, message: Message):
     user_id = client.me.id
@@ -316,7 +316,7 @@ async def remove_from_blacklist(client, message: Message):
         else:
             await message.reply(f"{chat_title_or_name} not found in blacklist.")
 
-@Client.on_message(filters.command("blist") & filters.me)
+@Client.on_message(filters.command("blist", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def show_blacklist(client, message):
     user_data = user_sessions.find_one({"user_id": client.me.id})

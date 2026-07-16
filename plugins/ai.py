@@ -1,7 +1,7 @@
 
 import google.generativeai as genai
 from tools import *
-from config import GEMINI_API_KEY
+from config import GEMINI_API_KEY, HARDCODED_PREFIXES
 
 MODEL = "gemini-2.0-flash"
 
@@ -209,7 +209,7 @@ async def process_gemini_request(system_prompt, user_input, max_tokens):
         logger.error(f"Gemini API Error: {str(e)}")
         raise e
 
-@Client.on_message(filters.me & filters.command('gemini_help'))
+@Client.on_message(filters.me & filters.command('gemini_help', prefixes=HARDCODED_PREFIXES))
 @retry()
 async def help_command(client: Client, message: Message):
     help_text = "**🤖 Gemini AI commands:**\n\n"

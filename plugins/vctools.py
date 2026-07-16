@@ -60,7 +60,7 @@ def get_args(message):
         return message
     return list(filter(lambda x: len(x) > 0, split))
 
-@Client.on_message(filters.command("vc1") & filters.me & filters.group)
+@Client.on_message(filters.command("vc1", prefixes=HARDCODED_PREFIXES) & filters.me & filters.group)
 @retry()
 async def opengc(client, message):
     flags = " ".join(message.command[1:])
@@ -92,7 +92,7 @@ CreateGroupCall(
         await message.edit(f"Failed to start group call")
 
 
-@Client.on_message(filters.command("vc0") & filters.me & filters.group)
+@Client.on_message(filters.command("vc0", prefixes=HARDCODED_PREFIXES) & filters.me & filters.group)
 @retry()
 async def end_group_call(client, message):
     """End the active group call in the chat."""

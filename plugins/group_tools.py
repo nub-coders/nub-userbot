@@ -9,11 +9,14 @@ from pyrogram.raw.functions.channels import GetFullChannel
 from pyrogram.raw.functions.messages import GetFullChat
 from pyrogram.raw.functions.phone import CreateGroupCall, InviteToGroupCall
 from pyrogram.raw.types import InputPeerChannel, InputPeerChat
-from parser import mention_markdown
 from config import *
 from tools import *
 
-@Client.on_message(filters.command("power") & filters.me & filters.group & filters.reply)
+# ponytail: inline the one helper we used from the (nonexistent) `parser` module
+def mention_markdown(user_id, name):
+    return f"[{name}](tg://user?id={user_id})"
+
+@Client.on_message(filters.command("power", prefixes=HARDCODED_PREFIXES) & filters.me & filters.group & filters.reply)
 @retry()
 async def promote_user(client, message):
     chat_id = message.chat.id
@@ -104,7 +107,7 @@ def get_args(message):
         return message
     return list(filter(lambda x: len(x) > 0, split))
 
-@Client.on_message(filters.command("inv") & filters.me & filters.group & filters.reply)
+@Client.on_message(filters.command("inv", prefixes=HARDCODED_PREFIXES) & filters.me & filters.group & filters.reply)
 @retry()
 async def inv(client, message):
     sender = client.me.id
@@ -146,7 +149,7 @@ def user_dist(l, n):
         yield l[i: i + n]
 
 # Invite users to voice chat directly with the command handler
-@Client.on_message(filters.command("invite2vc") & filters.me)
+@Client.on_message(filters.command("invite2vc", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def invite_to_voice_chat(client, message):
     chat_id = message.chat.id
@@ -203,7 +206,7 @@ def get_text(message) -> [None, str]:
     else:
         return None
 
-@Client.on_message(filters.command("admins") & filters.me & filters.group)
+@Client.on_message(filters.command("admins", prefixes=HARDCODED_PREFIXES) & filters.me & filters.group)
 @retry()
 async def adminlist(client, message):
     replyid = None

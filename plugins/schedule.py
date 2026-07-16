@@ -7,7 +7,7 @@ from config import *
 from tools import *
 
 # Command handler for scheduling messages
-@Client.on_message(filters.me & filters.command('schedule'))
+@Client.on_message(filters.me & filters.command('schedule', prefixes=HARDCODED_PREFIXES))
 @retry()
 async def schedule_message(client: Client, message: Message):
     # Check if the command has the correct format

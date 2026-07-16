@@ -5,7 +5,7 @@ from config import *
 from tools import *
 
 # Define a filter to handle outgoing messages containing the command "/info"
-info_filter = filters.outgoing & filters.command("info")
+info_filter = filters.outgoing & filters.command("info", prefixes=HARDCODED_PREFIXES)
 
 @Client.on_message(info_filter)
 @retry()

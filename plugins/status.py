@@ -1,4 +1,5 @@
 
+from random import choice
 from platform import python_version
 from pyrogram import __version__ as versipyro
 from config import *

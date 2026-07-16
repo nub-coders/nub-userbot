@@ -33,7 +33,7 @@ async def main():
             sleep_threshold=30,
             plugins=dict(
                 root="plugins",
-                include=["inline", "botcmds"]  # Bot-specific plugins: inline queries and the /start-/commands-/settings control surface
+                include=["inline", "botcmds", "downloader"]  # Bot-specific plugins: inline queries, the /start-/commands-/settings control surface, and the URL/media downloader
             )
         )
         apps["app"] = app

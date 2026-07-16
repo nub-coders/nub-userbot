@@ -2009,7 +2009,6 @@ userbot_commands = {
     'clr': '**Game Reset** - Clear used words from the word chain game.\n\n**Usage:** `[prefix]clr`\n**Note:** Resets the word chain game memory',
     'replyraid': '**Reply Raid** - Activate reply raid on a specific user.\n\n**Usage:** `[prefix]replyraid [user_id/@username]` or reply to message\n**Example:** `[prefix]replyraid @target_user`\n**Warning:** Use responsibly',
     'dreplyraid': '**Reply Raid Stop** - Deactivate reply raid on a specific user.\n\n**Usage:** `[prefix]dreplyraid [user_id/@username]` or reply to message\n**Example:** `[prefix]dreplyraid @target_user`',
-    'sg': '**User History** - Get user history using @SangMata_beta_bot.\n\n**Usage:** `[prefix]sg` (reply to user message)\n**Note:** Shows username and name history',
     'del': '**Message Delete** - Delete the replied message.\n\n**Usage:** `[prefix]del` (reply to message)\n**Note:** Removes the specific message',
     'delall': '**Bulk Delete** - Delete all messages from the replied user.\n\n**Usage:** `[prefix]delall` (reply to user message)\n**Warning:** Deletes all messages from that user',
     'gemini_help': '**AI Help** - Get detailed information about Gemini AI commands.\n\n**Usage:** `[prefix]gemini_help`\n**Note:** Shows all available AI commands and examples',
@@ -2029,7 +2028,7 @@ userbot_commands = {
 }
 
 userbot_categories = {
-    '👤 USER INFO': ['info', 'sg', 'me', 'stats', 'sessions'],
+    '👤 USER INFO': ['info', 'me', 'stats', 'sessions'],
     '🔄 PROFILE': ['clone', 'revert'],
     '💾 MEDIA SAVER': ['wow', 'link'],
     '🎨 STICKERS & MEDIA': ['qt', 'tiny', 'mmf', 'kang'],

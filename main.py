@@ -19,23 +19,27 @@ async def main():
     # Get session string from environment or user input
     session_string = SESSION_STR if SESSION_STR else input("Enter your Pyrogram session string: ")
 
-    # Initialize bot client with bot-specific plugins only
-    app = Client(
-        "main_bot", 
-        api_id=API_ID, 
-        api_hash=API_HASH, 
-        bot_token=BOT_TOKEN, 
-        in_memory=True,
-        sleep_threshold=30,
-        plugins=dict(
-            root="plugins",
-            include=["inline", "sg"]  # Bot-specific plugins for inline queries and special group features
+    # Initialize bot client with bot-specific plugins only. The bot is optional —
+    # it only powers inline/special-group features. Skip it entirely when no
+    # BOT_TOKEN is configured so nothing registers a dead client in apps["app"].
+    app = None
+    if BOT_TOKEN:
+        app = Client(
+            "main_bot",
+            api_id=API_ID,
+            api_hash=API_HASH,
+            bot_token=BOT_TOKEN,
+            in_memory=True,
+            sleep_threshold=30,
+            plugins=dict(
+                root="plugins",
+                include=["inline", "botcmds"]  # Bot-specific plugins: inline queries and the /start-/commands-/settings control surface
+            )
         )
-    )
-    apps["app"] = app
-    
-    # Initialize conversation for the bot
-    Conversation(app)
+        apps["app"] = app
+
+        # Initialize conversation for the bot
+        Conversation(app)
 
     # Initialize userbot client with userbot-specific plugins
     userbot = Client(
@@ -86,10 +90,10 @@ async def main():
     bot_started = False
     userbot_started = False
     try:
-        # Start bot client if token is provided. A bot failure (e.g. FLOOD_WAIT
+        # Start bot client if it was created. A bot failure (e.g. FLOOD_WAIT
         # on auth.ImportBotAuthorization) must NOT take down the userbot — the
         # bot client only powers inline/special-group features.
-        if BOT_TOKEN:
+        if app is not None:
             try:
                 await app.start()
                 bot_started = True

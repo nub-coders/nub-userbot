@@ -2,7 +2,7 @@ import os
 import asyncio
 import logging
 
-from pyrogram import Client
+from pyrogram import Client, idle
 from convopyro import Conversation
 from config import *
 
@@ -83,16 +83,25 @@ async def main():
     # Initialize conversation for userbot
     Conversation(userbot)
 
+    bot_started = False
+    userbot_started = False
     try:
-        # Start bot client if token is provided
+        # Start bot client if token is provided. A bot failure (e.g. FLOOD_WAIT
+        # on auth.ImportBotAuthorization) must NOT take down the userbot — the
+        # bot client only powers inline/special-group features.
         if BOT_TOKEN:
-            await app.start()
-            bot_me = await app.get_me()
-            print(f"Bot started successfully!")
-            print(f"Bot logged in as: {bot_me.first_name} (@{bot_me.username})")
-        
+            try:
+                await app.start()
+                bot_started = True
+                bot_me = await app.get_me()
+                print(f"Bot started successfully!")
+                print(f"Bot logged in as: {bot_me.first_name} (@{bot_me.username})")
+            except Exception as e:
+                print(f"Bot client failed to start (continuing without it): {e}")
+
         # Start userbot client
         await userbot.start()
+        userbot_started = True
         me = await userbot.get_me()
         print(f"Userbot started successfully!")
         print(f"Userbot logged in as: {me.first_name} (@{me.username})")
@@ -106,14 +115,15 @@ async def main():
             SUDO[me.id] = user_data["sudoers"]
 
         # Keep both clients running
-        await userbot.idle()
+        await idle()
 
     except Exception as e:
         print(f"Error starting clients: {e}")
     finally:
-        if BOT_TOKEN:
+        if bot_started:
             await app.stop()
-        await userbot.stop()
+        if userbot_started:
+            await userbot.stop()
 
 if __name__ == "__main__":
     asyncio.run(main())

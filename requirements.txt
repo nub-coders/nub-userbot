@@ -21,3 +21,4 @@ google-genai
 google-generativeai
 certifi
 psutil
+speedtest-cli

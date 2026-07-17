@@ -12,7 +12,7 @@ is_support = filters.create(lambda _, __, message: message.chat.is_support)
 async def afk_handler(client, message):
     user_id = client.me.id
     aaafk.setdefault(user_id, 100)
-    user_data = user_sessions.find_one({"user_id": user_id})
+    user_data = user_sessions.find_one({"user_id": user_id}) or {}
     afk_info = user_data.get("afk", {})
     if not afk_info or aaafk[user_id] == message.from_user.id:
         return
@@ -47,7 +47,7 @@ async def afk(client, message):
 async def unafk(client, message):
     user_id = message.from_user.id
 
-    user_data = user_sessions.find_one({"user_id": user_id})
+    user_data = user_sessions.find_one({"user_id": user_id}) or {}
     afk_info = user_data.get("afk", {})
     is_afk = afk_info.get("is_afk", False)
     if afk_info and is_afk:

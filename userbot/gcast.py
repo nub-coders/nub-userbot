@@ -15,7 +15,7 @@ async def gcast_handler(client, message):
     user_dir = f"{ggg}/{session_name}"
     os.makedirs(user_dir, exist_ok=True)
     user_id = client.me.id
-    user_data = user_sessions.find_one({"user_id": user_id})
+    user_data = user_sessions.find_one({"user_id": user_id}) or {}
     admin_ids = None
     if os.path.exists(admin_file):
        with open(admin_file, "r") as file:

@@ -62,7 +62,7 @@ async def clone(client, message):
 @retry()
 async def revert(client, message):
     await message.edit("`Reverting`")
-    user_data = user_sessions.find_one({"user_id": client.me.id})
+    user_data = user_sessions.find_one({"user_id": client.me.id}) or {}
     f_name = user_data.get('first_name',None)
     if not f_name:
        await message.delete()

@@ -10,7 +10,7 @@ import logging
 from typing import Dict, Optional, List
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message
-from plugins.game_solver import get_solver
+from userbot.game_solver import get_solver
 from tools import *
 import wordseek_config as ws_config
 # Setup logging

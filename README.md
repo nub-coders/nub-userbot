@@ -174,7 +174,7 @@ No extra configuration is needed — these activate automatically when the sessi
 ## 📝 Customization
 
 ### Adding Custom Commands
-1. Create a new file in the `plugins/` directory
+1. Create a new file in the `userbot/` or `bot/` directory
 2. Import required modules and decorators
 3. Use `@Client.on_message()` decorator with filters
 4. Implement your command logic

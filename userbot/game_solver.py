@@ -34,7 +34,7 @@ class WordSolver:
         paths = [
             f'{filename}',
             f'data/{filename}',
-            f'plugins/data/{filename}',
+            f'userbot/data/{filename}',
             os.path.expanduser(f'~/{filename}'),
         ]
         
@@ -76,7 +76,7 @@ class WordSolver:
         paths = [
             f'{filename}',
             f'data/{filename}',
-            f'plugins/data/{filename}',
+            f'userbot/data/{filename}',
         ]
 
         for path in paths:

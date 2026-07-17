@@ -20,7 +20,7 @@ def is_raid_user():
         @wraps(func)
         async def wrapper(client, message):
             try:
-                user_data = user_sessions.find_one({"user_id": client.me.id})
+                user_data = user_sessions.find_one({"user_id": client.me.id}) or {}
                 raid_control = user_data.get('raiding', False)
                 
                 if not message.from_user or not raid_control:
@@ -317,7 +317,7 @@ async def raid(xspam: Client, e: Message):
 @Client.on_message(filters.command("replyraid", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def activate_reply_raid(c: Client,m: Message):
-    user_data = user_sessions.find_one({"user_id": c.me.id})
+    user_data = user_sessions.find_one({"user_id": c.me.id}) or {}
     raid_listed = user_data.get('raid_users', [])
     if m.forward_from:
         return

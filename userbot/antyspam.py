@@ -278,7 +278,7 @@ async def add_to_blacklist(client, message):
 @retry()
 async def remove_from_blacklist(client, message: Message):
     user_id = client.me.id
-    user_data = user_sessions.find_one({"user_id": user_id})
+    user_data = user_sessions.find_one({"user_id": user_id}) or {}
 
     blocked_list = user_data.get("blocked_list", [])
 

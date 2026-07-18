@@ -8,19 +8,6 @@ import magic
 
 mime = magic.Magic(mime=True)
 
-def rename_file(old_name, new_name):
-    try:
-        os.rename(old_name, new_name)
-        new_file_path = os.path.abspath(new_name)
-        print(f'File renamed from {old_name} to {new_name}')
-        return new_file_path
-    except FileNotFoundError:
-        print(f'The file {old_name} does not exist.')
-    except FileExistsError:
-        print(f'The file {new_name} already exists.')
-    except Exception as e:
-        print(f'An error occurred: {e}')
-
 async def convert_to_image(message, client):
     """Convert sticker to image format"""
     try:

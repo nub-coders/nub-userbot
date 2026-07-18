@@ -79,11 +79,10 @@ def build_settings_ui(user_data: dict):
     """Build the settings message text and keyboard from user_data.
 
     Returns (text, InlineKeyboardMarkup). Mirrors the toggle keys read by the
-    userbot plugins: Spam_control, game, raiding, music, react_control, and the
+    userbot plugins: Spam_control, game, music, react_control, and the
     delete_count/block_count welcome-mode counters."""
     spam_control  = user_data.get('Spam_control', True)
     game_control  = user_data.get('game', False)
-    raid_control  = user_data.get('raiding', False)
     music_control = user_data.get('music', False)
     react_control = user_data.get('react_control', False)
     delete_count  = user_data.get('delete_count', 0)
@@ -100,7 +99,6 @@ def build_settings_ui(user_data: dict):
     if spam_control and block_count > 0:
         text += f"<blockquote>{Msg.EMOJI_SHIELD} Auto-block after: {block_count} msgs</blockquote>\n"
     text += f"<blockquote>{Msg.EMOJI_PUZZLE} Word chain game autoplay: {ON if game_control else OFF}</blockquote>\n"
-    text += f"<blockquote>{Msg.EMOJI_SPARK} Replyraid plugin: {ON if raid_control else OFF}</blockquote>\n"
     text += f"<blockquote>{Msg.EMOJI_MUSIC} Music plugin: {ON if music_control else OFF}</blockquote>\n"
     text += f"<blockquote>{Msg.EMOJI_THUMBS_UP} Auto react: {ON if react_control else OFF}</blockquote>\n"
     if react_control:
@@ -130,7 +128,6 @@ def build_settings_ui(user_data: dict):
     buttons = [
         [
             InlineKeyboardButton(f"Game {ON if game_control else OFF}",      callback_data="toggle_game",         style=ButtonStyle.SUCCESS if game_control  else ButtonStyle.DANGER),
-            InlineKeyboardButton(f"Replyraid {ON if raid_control else OFF}", callback_data="toggle_raiding",      style=ButtonStyle.SUCCESS if raid_control  else ButtonStyle.DANGER),
             InlineKeyboardButton(f"Music {ON if music_control else OFF}",    callback_data="toggle_music",        style=ButtonStyle.SUCCESS if music_control else ButtonStyle.DANGER),
         ],
         [InlineKeyboardButton(f"Welcome {'⬇️' if spam_control else OFF}", callback_data="toggle_Spam_control", style=ButtonStyle.SUCCESS if spam_control else ButtonStyle.DANGER)],

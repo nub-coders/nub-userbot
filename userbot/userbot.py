@@ -40,7 +40,6 @@ import aiohttp
 from google import genai
 import pytz
 from bson.objectid import ObjectId
-from moviepy.editor import VideoFileClip, AudioFileClip
 from PIL import Image, ImageDraw, ImageFont
 from pymediainfo import MediaInfo
 from pymongo import MongoClient
@@ -93,7 +92,6 @@ from pytgcalls.types import ChatUpdate, Device, ExternalMedia
 from convopyro import Conversation, listen_message
 from tools import *
 from utils.message import Msg
-from youtube import handle_youtube, get_video_details, extract_video_id, format_number, format_duration, time_to_seconds
 # Configure the logger
 logging.basicConfig(
     level=logging.INFO,
@@ -146,14 +144,6 @@ async def get_youtube_duration(youtube_link):
 # Helper function to split users into chunks
 
 
-# Invite users to voice chat directly with the command handler
-
-create_raid_filter = filters.create(
-    lambda _, client, message: (
-        message.from_user
-        and message.from_user.id in getuser_data(client.me.id).get('raid_users', [])))
-
-      
 create_custom_filter = filters.create(lambda _, __, message: re.match(getuser_data(message.from_user.id).get("save_com", "^(Wow|wow)$"), message.text) if message.from_user else False)
 
 
@@ -1312,9 +1302,7 @@ userbot_commands = {
     'stats': '**Account Statistics** - View detailed statistics about your account and bot usage.\n\n**Usage:** `[prefix]stats`\n**Features:** User count, group count, message stats, uptime',
     'clone': '**Profile Cloner** - Clone another user\'s profile (name, bio, profile picture).\n\n**Usage:** `[prefix]clone [user_id/@username]`\n**Example:** `[prefix]clone @target_user`',
     'revert': '**Profile Restore** - Restore your original profile details after cloning.\n\n**Usage:** `[prefix]revert`\n**Note:** Undoes the last cloning operation',
-    'raid': '**User Raid** - Initiate a raid on a specific user with multiple messages.\n\n**Usage:** `[prefix]raid [count] [user_id/@username]`\n**Example:** `[prefix]raid 10 @spammer`\n**Warning:** Use responsibly',
     'dmspam': '**DM Spam** - Spam a user in their personal messages (DM) - works in groups.\n\n**Usage:** `[prefix]dmspam [count] [message]` (reply to user)\n**Example:** Reply to a user and use `[prefix]dmspam 5 Hello`\n**Note:** Only works in group chats, sends messages to user\'s DM',
-    'dmraid': '**DM Raid** - Raid a user in their personal messages (DM) with random raid messages.\n\n**Usage:** `[prefix]dmraid [count]` (reply to user)\n**Example:** Reply to a user and use `[prefix]dmraid 10`\n**Note:** Only works in group chats, sends raid messages to user\'s DM',
     'wordseek': '**WordSeek Auto-Play** - Show WordSeek auto-play info and trigger words.\n\n**Usage:** `[prefix]wordseek`\n**Note:** Use any trigger word to start auto-play',
     'gameinfo': '**WordSeek Game Info** - Show current WordSeek auto-game status and hints.\n\n**Usage:** `[prefix]gameinfo`\n**Note:** Works only when an auto-game is active',
     'invite2vc': '**Voice Chat Invite** - Invite all group members to join the voice chat.\n\n**Usage:** `[prefix]invite2vc`\n**Note:** You must be in the voice chat first',
@@ -1347,8 +1335,6 @@ userbot_commands = {
     'rmbl': '**Broadcast Unblock** - Remove chat from broadcast blocklist.\n\n**Usage:** `[prefix]rmbl [chat_id]` or use in target chat\n**Example:** `[prefix]rmbl -1001234567890`',
     'blist': '**Blocklist View** - Show all chats in the broadcast blocklist.\n\n**Usage:** `[prefix]blist`\n**Note:** Displays blocked chat IDs and names',
     'clr': '**Game Reset** - Clear used words from the word chain game.\n\n**Usage:** `[prefix]clr`\n**Note:** Resets the word chain game memory',
-    'replyraid': '**Reply Raid** - Activate reply raid on a specific user.\n\n**Usage:** `[prefix]replyraid [user_id/@username]` or reply to message\n**Example:** `[prefix]replyraid @target_user`\n**Warning:** Use responsibly',
-    'dreplyraid': '**Reply Raid Stop** - Deactivate reply raid on a specific user.\n\n**Usage:** `[prefix]dreplyraid [user_id/@username]` or reply to message\n**Example:** `[prefix]dreplyraid @target_user`',
     'del': '**Message Delete** - Delete the replied message.\n\n**Usage:** `[prefix]del` (reply to message)\n**Note:** Removes the specific message',
     'delall': '**Bulk Delete** - Delete all messages from the replied user.\n\n**Usage:** `[prefix]delall` (reply to user message)\n**Warning:** Deletes all messages from that user',
     'gemini_help': '**AI Help** - Get detailed information about Gemini AI commands.\n\n**Usage:** `[prefix]gemini_help`\n**Note:** Shows all available AI commands and examples',
@@ -1382,7 +1368,7 @@ userbot_categories = {
     '⚙️ BOT SETTINGS': ['set'],
     '🎤 VOICE CHAT': ['vc0', 'vc1', 'invite2vc'],
     '🏷️ MEMBER TAGGING': ['tagall', 'cancel'],
-    '⚔️ RAID & SPAM': ['raid', 'dmspam', 'dmraid', 'replyraid', 'dreplyraid', 'spam', 'dspam', 'statspam', 'slowspam', 'fastspam'],
+    '⚔️ SPAM': ['dmspam', 'spam', 'dspam', 'statspam', 'slowspam', 'fastspam'],
     '⏰ SCHEDULING': ['schedule'],
     '👑 ADMIN CONTROL': ['addsudo', 'rmsudo', 'listsudo'],
     '🤖 AI COMMANDS': [],

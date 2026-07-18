@@ -3,15 +3,22 @@ import requests
 import base64
 import asyncio
 import os
+import logging
+import re
+from typing import Any, Dict, List, Optional
 from PIL import Image
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.enums import ParseMode
-from pyrogram.errors import StickersetInvalid, YouBlockedUser
+from pyrogram.errors import StickersetInvalid, YouBlockedUser, PeerIdInvalid
 from pyrogram.raw.functions.messages import GetStickerSet
 from pyrogram.raw.types import InputStickerSetShortName
 from config import *
 from tools import *
+from utils.message import Msg
+
+logger = logging.getLogger("userbot")
+
 
 
 @Client.on_message(filters.command("tiny", prefixes=HARDCODED_PREFIXES) & filters.me)
@@ -375,3 +382,725 @@ async def kang(client, message):
 
 async def get_response(message, client):
     return [x async for x in client.get_chat_history("Stickers", limit=1)][0].text
+
+
+
+
+me_filter = (filters.me | sudoers_filter()) & filters.command("qt", prefixes=HARDCODED_PREFIXES)
+@Client.on_message(me_filter)
+async def duck_command_handler(client, message):
+    """Enhanced quote command handler with better error handling and features"""
+    USERBOT = await edit_or_reply(message, f"╭── {Msg.EMOJI_NOTE} QUOTE ──╮\n┃ {Msg.EMOJI_LOADING} Generating quote...\n╰━━━━━━━━━━━━━━━━━━━━╯")
+
+    # Check if the message is a reply
+    if not message.reply_to_message:
+        await USERBOT.edit_text(Msg.ERR_REPLY_TO_QUOTE)
+        await asyncio.sleep(3)
+        await USERBOT.delete()
+        return
+
+    try:
+        sender = message.from_user.id
+        replied_message = message.reply_to_message
+        user = replied_message.from_user
+
+        # Admin check
+        if is_admin_user(user.id):
+            return await USERBOT.edit_text(
+                "You are fucking requesting me to create fake quote of my lord and my creator.\nSo I won't...**Fuck off!!**"
+            )
+
+        # Setup directories
+        session_name = f'user_{sender}'
+        user_dir = f"{ggg}/{session_name}"
+        os.makedirs(user_dir, exist_ok=True)
+
+        # Parse command text and check for flags
+        HARDCODED_PREFIXES = ["!", "_", "?", "^", "."]
+        escaped_prefixes = '|'.join(re.escape(p) for p in HARDCODED_PREFIXES)
+        cmd_match = re.search(rf"^({escaped_prefixes})\w+", message.text or "")
+        words_to_remove = []
+        if cmd_match:
+            words_to_remove.append(cmd_match.group(0))
+
+        include_reply = False
+        force_custom = False
+
+        raw_text = message.text or ""
+
+        # Check for -r flag (include reply)
+        if "-r" in raw_text:
+            include_reply = True
+            words_to_remove.append("-r")
+
+        # Check for -f flag (force custom text)
+        if "-f" in raw_text:
+            force_custom = True
+            words_to_remove.append("-f")
+
+        # Extract command specific entities if needed
+        command_text, custom_entities = update_message_and_entities(
+            text=raw_text,
+            entities=message.entities or [],
+            words_to_remove=words_to_remove
+        )
+
+        # Determine quote text based on flags and available text
+        if force_custom and command_text:
+            # Use custom text when -f flag is present and text is provided
+            quote_text = command_text
+        else:
+            # Default: always use original message content (when no -f flag or no custom text)
+            quote_text = await get_message_content(replied_message)
+
+        # If no text content but message has media, use a placeholder
+        if not quote_text and await has_media(replied_message):
+            quote_text = " "  # Use space as placeholder for media-only messages
+
+        if not quote_text:
+            await USERBOT.edit_text(Msg.ERR_NO_TEXT_TO_QUOTE)
+            await asyncio.sleep(3)
+            await USERBOT.delete()
+            return
+
+        # Step 1: Collect all information first
+        
+        # Collect user information
+        user_info = await build_user_info(client, user)
+        
+        # Collect entities
+        entities = []
+        if force_custom and command_text:
+            entities = await convert_entities(custom_entities)
+        else:
+            source_entities = replied_message.entities or replied_message.caption_entities
+            if source_entities:
+                quote_text, processed_entities = update_message_and_entities(
+                    text=quote_text,
+                    entities=source_entities
+                )
+                entities = await convert_entities(processed_entities)
+        
+        # Collect media information (only if not using custom text with -f flag)
+        media_info = None
+        parent_reply_message = replied_message.reply_to_message
+        if not parent_reply_message and getattr(replied_message, "reply_to_message_id", None):
+            try:
+                parent_reply_message = await client.get_messages(
+                    replied_message.chat.id,
+                    replied_message.reply_to_message_id,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to fetch parent reply message: {e}")
+
+        if not (force_custom and command_text):
+            media_info = await get_media_info(client, replied_message)
+            # Fallback: if the replied message is text-only but is replying to media,
+            # include that parent media in the generated quote.
+            # For .qt -r, do NOT copy parent media into the main message,
+            # otherwise main and reply become duplicate media blocks.
+            if not media_info and parent_reply_message and not include_reply:
+                media_info = await get_media_info(client, parent_reply_message)
+        
+        # Collect reply information (only if -r flag is present and reply exists)
+        reply_info = None
+        if include_reply and parent_reply_message:
+            reply_info = await build_reply_info(client, parent_reply_message)
+        
+        # Step 2: Validate all collected information
+        if not user_info or "id" not in user_info:
+            await USERBOT.edit_text(Msg.ERR_GET_USER_INFO_FAILED)
+            await asyncio.sleep(3)
+            await USERBOT.delete()
+            return
+        
+        # Step 3: Build the complete payload after all information is collected
+        
+        # Create the main message object
+        message_obj = {
+            "from": user_info,
+            "text": quote_text[:4096],  # Limit text length as per API docs
+            "entities": entities,
+            "avatar": True
+        }
+        
+        # Add media if available
+        if media_info:
+            message_obj["media"] = media_info
+        
+        # Add reply if available
+        if reply_info:
+            message_obj["replyMessage"] = reply_info
+        
+        # Create the final payload
+        quote_payload = {
+            "type": "quote",
+            "format": "webp",
+            "backgroundColor": "#1b1429",
+            "width": 512,
+            "height": 768,
+            "scale": 2,
+            "emojiBrand": "apple",
+            "botToken": BOT_TOKEN,  # Required for custom_emoji resolution via Telegram API
+            "messages": [message_obj]
+        }
+
+        def _redact_payload_for_log(value):
+            if isinstance(value, dict):
+                sanitized = {}
+                for k, v in value.items():
+                    if k == "base64" and isinstance(v, str):
+                        sanitized[k] = f"***BASE64_REDACTED*** ({len(v)} chars)"
+                    else:
+                        sanitized[k] = _redact_payload_for_log(v)
+                return sanitized
+            if isinstance(value, list):
+                return [_redact_payload_for_log(v) for v in value]
+            return value
+
+        redacted_payload = _redact_payload_for_log(quote_payload)
+        redacted_payload["botToken"] = "***REDACTED***" if redacted_payload.get("botToken") else None
+        log_tag = "[FAKE QUOTE]" if force_custom else "[QUOTE]"
+        try:
+            msg0 = redacted_payload.get("messages", [{}])[0]
+            reply_obj = msg0.get("replyMessage") if isinstance(msg0, dict) else None
+            logger.info(
+                "%s Summary: main_media=%s reply_attached=%s reply_media=%s reply_to_message_id=%s",
+                log_tag,
+                bool(msg0.get("media")) if isinstance(msg0, dict) else False,
+                bool(reply_obj),
+                bool(reply_obj.get("media")) if isinstance(reply_obj, dict) else False,
+                getattr(replied_message, "reply_to_message_id", None),
+            )
+        except Exception as e:
+            logger.warning(f"{log_tag} Failed to build summary log: {e}")
+
+        logger.info(
+            f"{log_tag} Payload: %s",
+            json.dumps(redacted_payload, ensure_ascii=False)
+        )
+        
+        quote_path = await generate_quote(client, quote_payload, user_dir)
+
+        if not quote_path:
+            await USERBOT.edit_text(Msg.ERR_GENERATE_QUOTE_FAILED)
+            await asyncio.sleep(3)
+            await USERBOT.delete()
+            return
+
+    except Exception as e:
+        error_msg = f"Quote generation preparation error: {str(e)}"
+        logger.error(error_msg)
+        try:
+            await (apps.get("app") or client).send_message(client.me.id, f"ERROR in quote handler: {error_msg}")
+            await USERBOT.edit_text(Msg.ERR_QUOTE_FAILED)
+            await asyncio.sleep(3)
+            await USERBOT.delete()
+        except Exception:            pass  # If even error handling fails, just continue
+        return
+
+    try:
+        # Send the sticker
+        await client.send_sticker(
+            chat_id=apps.get("app").me.id if apps.get("app") is not None else "me",
+            sticker=quote_path
+        )
+        await client.send_sticker(
+            chat_id=message.chat.id,
+            sticker=quote_path,
+            reply_to_message_id=replied_message.id
+        )
+        await USERBOT.delete()
+        return
+
+    except PeerIdInvalid as e:
+        error_msg = f"PEER_ID_INVALID error: {str(e)}"
+        logger.warning(error_msg)
+        try:
+            await (apps.get("app") or client).send_message(client.me.id, f"ERROR in quote handler: {error_msg}")
+            await USERBOT.edit_text(Msg.ERR_QUOTE_FAILED)
+            await asyncio.sleep(3)
+            await USERBOT.delete()
+        except Exception:            pass
+        return
+
+    except Exception as e:
+        error_msg = f"Quote send error: {str(e)}"
+        logger.error(error_msg)
+        try:
+            await (apps.get("app") or client).send_message(client.me.id, f"ERROR in quote handler: {error_msg}")
+            await USERBOT.edit_text(Msg.ERR_QUOTE_FAILED)
+            await asyncio.sleep(3)
+            await USERBOT.delete()
+        except Exception:            pass  # If even error handling fails, just continue
+        return
+
+
+
+async def build_user_info(client, user) -> Optional[Dict[str, Any]]:
+    """Build user information according to API spec with comprehensive error handling"""
+    try:
+        if not user:
+            logger.debug("No user object provided")
+            return None
+            
+        user_info = {
+            "id": user.id
+        }
+        
+        # Handle name - use name field or first_name/last_name
+        try:
+            if user.first_name and user.last_name:
+                user_info["first_name"] = user.first_name
+                user_info["last_name"] = user.last_name
+            elif user.first_name:
+                user_info["first_name"] = user.first_name
+            elif user.username:
+                user_info["username"] = user.username
+                user_info["name"] = f"@{user.username}"
+            else:
+                user_info["name"] = "Unknown User"
+        except Exception as e:
+            logger.warning(f"Error processing username info: {e}")
+            user_info["name"] = "Unknown User"
+        
+        # Handle profile photo
+        try:
+            if hasattr(user, 'photo') and user.photo:
+                file_id = None
+                if hasattr(user.photo, 'big_file_id') and user.photo.big_file_id:
+                    file_id = user.photo.big_file_id
+                elif hasattr(user.photo, 'small_file_id') and user.photo.small_file_id:
+                    file_id = user.photo.small_file_id
+                
+                if file_id:
+                    session_name = f'user_{client.me.id}'
+                    user_dir = f"{ggg}/{session_name}"
+                    os.makedirs(user_dir, exist_ok=True)
+                    photo_path = await client.download_media(file_id, file_name=f"{user_dir}/")
+                    if photo_path and os.path.exists(photo_path):
+                        with open(photo_path, "rb") as f:
+                            base64_img = base64.b64encode(f.read()).decode('utf-8')
+                        user_info["photo"] = {"base64": base64_img}
+                        os.remove(photo_path)
+        except Exception as e:
+            logger.warning(f"Error getting user photo: {e}")
+        
+        # Handle emoji status
+        try:
+            if hasattr(user, 'emoji_status') and user.emoji_status:
+                if hasattr(user.emoji_status, 'custom_emoji_id') and user.emoji_status.custom_emoji_id:
+                    user_info["emoji_status"] = str(user.emoji_status.custom_emoji_id)
+        except Exception as e:
+            logger.warning(f"Error getting emoji status: {e}")
+        
+        return user_info
+        
+    except Exception as e:
+        logger.error(f"Critical error in build_user_info: {e}")
+        return None
+
+
+
+async def get_media_info(client, message) -> Optional[Dict[str, Any]]:
+    logger.debug(f"[DEBUG] get_media_info called with message: {message}")
+    """Extract media information for quote-api according to API spec with validation"""
+    
+    # Initial validation
+    if not message:
+        logger.debug("[DEBUG] No message provided")
+        return None
+        
+    if not hasattr(message, 'media'):
+        logger.debug("[DEBUG] Message has no media attribute")
+        return None
+    
+    logger.debug(f"[DEBUG] Message has media attribute: {message.media}")
+
+    # Resolve media attribute name robustly across enum implementations.
+    media_enum = message.media
+    media_attr = None
+
+    # Preferred: enum name (PHOTO -> photo)
+    if hasattr(media_enum, 'name') and media_enum.name:
+        media_attr = str(media_enum.name).lower()
+        logger.debug(f"[DEBUG] Converted media_attr from enum name: {media_attr}")
+
+    # Fallback: enum/string value
+    if not media_attr and hasattr(media_enum, 'value'):
+        enum_value = media_enum.value
+        logger.debug(f"[DEBUG] Raw media enum value: {enum_value}")
+        if isinstance(enum_value, str) and enum_value:
+            media_attr = enum_value.lower()
+
+    # Last fallback: parse string form (MessageMediaType.PHOTO -> photo)
+    if not media_attr:
+        media_str = str(media_enum)
+        logger.debug(f"[DEBUG] Raw media string: {media_str}")
+        if media_str.startswith('MessageMediaType.'):
+            media_attr = media_str.replace('MessageMediaType.', '').lower()
+        elif media_str:
+            media_attr = media_str.lower()
+
+    if not media_attr:
+        logger.debug("[DEBUG] Could not resolve media attribute name")
+        return None
+
+    # Get the media object using resolved attribute.
+    media_obj = getattr(message, media_attr, None)
+
+    # Defensive fallback for cases where enum mapping differs at runtime.
+    if not media_obj:
+        for candidate in ['photo', 'sticker', 'video', 'animation', 'document', 'video_note', 'voice', 'audio']:
+            candidate_obj = getattr(message, candidate, None)
+            if candidate_obj:
+                media_attr = candidate
+                media_obj = candidate_obj
+                logger.debug(f"[DEBUG] Fallback media_attr matched: {media_attr}")
+                break
+
+    logger.debug(f"[DEBUG] Media object retrieved: {media_obj}")
+
+    if not media_obj:
+        logger.debug(f"[DEBUG] No media object found for type: {media_attr}")
+        return None
+
+    # Get thumbnail file_id first (important for stickers/animated media).
+    # Quote APIs generally accept image previews, not raw animated/video payloads.
+    logger.debug(f"[DEBUG] Attempting to resolve thumbnail from media_attr: {media_attr}")
+    try:
+        media_attribute = getattr(message, media_attr)
+        logger.debug(f"[DEBUG] Media attribute object: {media_attribute}")
+        
+        thumbnail_file_id = None
+
+        # 1) Prefer explicit single thumbnail objects
+        thumb_obj = getattr(media_attribute, 'thumb', None) or getattr(media_attribute, 'thumbnail', None)
+        if thumb_obj and getattr(thumb_obj, 'file_id', None):
+            thumbnail_file_id = thumb_obj.file_id
+
+        # 2) Then try thumbnail lists
+        if not thumbnail_file_id:
+            thumbs = getattr(media_attribute, 'thumbs', None)
+            logger.debug(f"[DEBUG] Thumbs attribute: {thumbs}")
+            if thumbs and len(thumbs) > 0 and getattr(thumbs[0], 'file_id', None):
+                thumbnail_file_id = thumbs[0].file_id
+
+        # 3) Safe fallback to original file for static image-like types only
+        if not thumbnail_file_id and media_attr in ['photo', 'sticker']:
+            thumbnail_file_id = getattr(media_attribute, 'file_id', None)
+
+        # 4) Last-resort fallback for other types if no thumb exists
+        if not thumbnail_file_id:
+            thumbnail_file_id = getattr(media_attribute, 'file_id', None)
+                
+        if thumbnail_file_id:
+            logger.debug(f"[DEBUG] Thumbnail file_id found: {thumbnail_file_id}")
+        else:
+            logger.debug(f"[DEBUG] No file_id found")
+            return None
+            
+    except (AttributeError, IndexError, TypeError) as e:
+        logger.debug(f"[DEBUG] Exception getting thumbnail for media type {media_attr}: {e}")
+        return None
+
+    # Download the thumbnail
+    temp_file_path = None
+    try:
+        logger.debug(f"[DEBUG] Starting thumbnail download process")
+        
+        # Create user-specific directory
+        session_name = f'user_{client.me.id}'
+        user_dir = f"{ggg}/{session_name}"
+        logger.debug(f"[DEBUG] User directory: {user_dir}")
+        
+        os.makedirs(user_dir, exist_ok=True)
+        logger.debug(f"[DEBUG] User directory created/verified")
+
+        # Create temporary file in user directory
+        logger.debug(f"[DEBUG] Downloading media with file_id: {thumbnail_file_id}")
+        temp_file_path = await client.download_media(message=thumbnail_file_id, file_name=f"{user_dir}/")
+        logger.debug(f"[DEBUG] Media downloaded to: {temp_file_path}")
+
+        # Convert to base64
+        if temp_file_path and os.path.exists(temp_file_path):
+            with open(temp_file_path, "rb") as image_file:
+                base64_data = base64.b64encode(image_file.read()).decode('utf-8')
+            logger.debug(f"[DEBUG] Media thumbnail converted to base64 successfully")
+            return {"base64": base64_data}
+        else:
+            logger.debug("[DEBUG] Failed to download thumbnail for base64 conversion")
+            return None
+
+    except Exception as e:
+        logger.debug(f"[DEBUG] Exception during download/upload process: {e}")
+        return None
+        
+    finally:
+        # Clean up temporary file
+        logger.debug(f"[DEBUG] Cleanup phase - temp_file_path: {temp_file_path}")
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.unlink(temp_file_path)
+                logger.debug(f"[DEBUG] Temporary file deleted successfully: {temp_file_path}")
+            except OSError as e:
+                logger.debug(f"[DEBUG] Error deleting temporary file: {e}")
+        else:
+            logger.debug(f"[DEBUG] No temporary file to delete or file doesn't exist")
+
+    logger.debug("[DEBUG] Function completed, returning None")
+    return None
+
+
+
+async def has_media(message):
+    """Check if message contains any media content"""
+    return any([
+        message.sticker,
+        message.photo,
+        message.video,
+        message.audio,
+        message.voice,
+        message.document,
+        message.animation,
+        message.video_note
+    ])
+
+
+async def get_message_content(message):
+    """Extract content from any message type according to quote-api standards"""
+    # For text messages, return the text directly
+    if message.text:
+        return message.text
+
+    # For media with captions, return the caption
+    if message.caption:
+        return message.caption
+
+    # For stickers, return empty string so the sticker media gets processed
+    if message.sticker:
+        return ""
+
+    # For other media types without captions, return empty string
+    # The media will be handled by the media processing function
+    if any([message.photo, message.video, message.audio, message.voice,
+            message.document, message.animation, message.video_note]):
+        return ""
+
+    # For contact messages, return contact info
+    if message.contact:
+        return f"{message.contact.first_name} {message.contact.last_name or ''}".strip()
+
+    # For location messages, return coordinates or venue info
+    if message.location:
+        return f"{Msg.EMOJI_LINK} Location"
+
+    if message.venue:
+        return message.venue.title
+
+    # For polls, return the question
+    if message.poll:
+        return message.poll.question
+
+    # For dice/darts, return the emoji
+    if message.dice:
+        return message.dice.emoji
+
+    # For games, return the title
+    if message.game:
+        return message.game.title
+
+    # For service messages or unknown types, return empty string
+    return ""
+
+
+async def build_reply_info(client, reply_message) -> Optional[Dict[str, Any]]:
+    """Build reply message information according to API spec with validation"""
+    try:
+        if not reply_message:
+            logger.debug("No reply message provided")
+            return None
+            
+        if not hasattr(reply_message, 'from_user') or not reply_message.from_user:
+            logger.debug("Reply message has no from_user")
+            return None
+
+        reply_user = reply_message.from_user
+        
+        # Get reply text content (do not inject literal "Media" for media-only messages)
+        reply_text = ""
+        try:
+            reply_text = await get_message_content(reply_message)
+            if reply_text is None:
+                reply_text = ""
+        except Exception as e:
+            logger.warning(f"Error getting reply text: {e}")
+            reply_text = ""
+
+        # Get reply entities
+        reply_entities = []
+        try:
+            source_entities = reply_message.entities or reply_message.caption_entities
+            if source_entities:
+                reply_entities = await convert_entities(source_entities)
+        except Exception as e:
+            logger.warning(f"Error getting reply entities: {e}")
+
+        # Get reply media preview (thumbnail/base64)
+        reply_media = None
+        try:
+            reply_media = await get_media_info(client, reply_message)
+        except Exception as e:
+            logger.warning(f"Error getting reply media: {e}")
+
+        # For media-only replies, use a whitespace placeholder to keep API payload valid.
+        if not reply_text and reply_media:
+            reply_text = " "
+
+        # Build reply user info
+        reply_user_info = await build_user_info(client, reply_user)
+        if not reply_user_info:
+            logger.warning("Failed to build reply user info")
+            return None
+
+        reply_info = {
+            "name": reply_user_info.get("name") or reply_user_info.get("first_name", "Unknown"),
+            "text": reply_text[:100],  # Limit reply text length
+            "entities": reply_entities,
+            "chatId": getattr(reply_message.chat, 'id', 0),
+            "from": reply_user_info
+        }
+
+        if reply_media:
+            reply_info["media"] = reply_media
+
+        logger.debug(f"Reply info collected: {reply_info}")
+        return reply_info
+
+    except Exception as e:
+        logger.error(f"Error building reply info: {e}")
+        return None
+
+
+async def convert_entities(entities) -> List[Dict[str, Any]]:
+    """Convert Pyrogram entities to quote API format"""
+    converted = []
+
+    # Mapping of Pyrogram entity types to quote API types
+    entity_type_mapping = {
+        # Legacy mappings
+        'MessageEntityBold': 'bold',
+        'MessageEntityItalic': 'italic',
+        'MessageEntityCode': 'code',
+        'MessageEntityPre': 'pre',
+        'MessageEntityTextUrl': 'text_link',
+        'MessageEntityUrl': 'url',
+        'MessageEntityMention': 'mention',
+        'MessageEntityHashtag': 'hashtag',
+        'MessageEntityBotCommand': 'bot_command',
+        'MessageEntityStrike': 'strikethrough',
+        'MessageEntityUnderline': 'underline',
+        'MessageEntityCustomEmoji': 'custom_emoji',
+        'MessageEntitySpoiler': 'spoiler',
+        'MessageEntityCashtag': 'cashtag',
+        'MessageEntityPhone': 'phone_number',
+        'MessageEntityEmail': 'email',
+        
+        # Pyrogram v2 Enums
+        'BOLD': 'bold',
+        'ITALIC': 'italic',
+        'CODE': 'code',
+        'PRE': 'pre',
+        'TEXT_LINK': 'text_link',
+        'URL': 'url',
+        'MENTION': 'mention',
+        'HASHTAG': 'hashtag',
+        'BOT_COMMAND': 'bot_command',
+        'STRIKETHROUGH': 'strikethrough',
+        'UNDERLINE': 'underline',
+        'CUSTOM_EMOJI': 'custom_emoji',
+        'SPOILER': 'spoiler',
+        'CASHTAG': 'cashtag',
+        'PHONE_NUMBER': 'phone_number',
+        'EMAIL': 'email',
+        'BLOCKQUOTE': 'blockquote',
+        'TEXT_MENTION': 'text_mention'
+    }
+
+    try:
+        for entity in entities:
+            # Get entity type name — use enum's .name attr (e.g. CUSTOM_EMOJI) like main.py
+            entity_type_name = ""
+            if hasattr(entity, 'type'):
+                if hasattr(entity.type, 'name'):
+                    entity_type_name = entity.type.name
+                elif hasattr(entity.type, '__name__'):
+                    entity_type_name = entity.type.__name__
+                else:
+                    entity_type_name = str(entity.type).split('.')[-1].replace('>', '')
+
+            # Map to quote API type
+            api_type = entity_type_mapping.get(entity_type_name, 'text')
+
+            entity_dict = {
+                "type": api_type,
+                "offset": entity.offset,
+                "length": entity.length
+            }
+
+            # Add additional fields based on entity type
+            if hasattr(entity, 'url') and entity.url:
+                entity_dict["url"] = entity.url
+            if hasattr(entity, 'custom_emoji_id') and entity.custom_emoji_id:
+                entity_dict["custom_emoji_id"] = str(entity.custom_emoji_id)  # API requires string
+            if hasattr(entity, 'language') and entity.language:
+                entity_dict["language"] = entity.language
+
+            converted.append(entity_dict)
+
+    except Exception as e:
+        logger.error(f"Error converting entities: {e}")
+
+    return converted
+
+
+async def generate_quote(client, payload: Dict[str, Any], user_dir: str) -> Optional[str]:
+    """Generate quote using the API with proper error handling and fallback"""
+    
+    # List of endpoints to try in order
+    endpoints = [
+        'https://quote.nubcoders.com/generate',
+        'http://quote-api:3000/generate',
+        'http://127.0.0.1:3000/generate',
+        'https://bot.lyo.su/quote/generate'
+    ]
+    
+    for i, endpoint in enumerate(endpoints, 1):
+        try:
+            logger.debug(f"Attempting quote generation with endpoint {i}: {endpoint}")
+            response = requests.post(endpoint, json=payload, timeout=30)
+            response.raise_for_status()
+            response_json = response.json()
+
+            if not response_json.get('ok'):
+                raise ValueError(f"API error: {response_json}")
+
+            image_b64 = response_json.get('result', {}).get('image')
+            if not image_b64:
+                raise ValueError(f"Invalid API response, missing image: {response_json}")
+
+            buffer = base64.b64decode(image_b64.encode('utf-8'))
+            quote_path = f'{user_dir}/Quotly.webp'
+            open(quote_path, 'wb').write(buffer)
+            logger.info(f"Quote generated successfully using endpoint {i}")
+            return quote_path
+        except Exception as e:
+            logger.warning(f"Quote generation error with endpoint {i} ({endpoint}): {e}")
+            if i == len(endpoints):
+                logger.error("All endpoints failed")
+                return None
+            else:
+                logger.debug("Trying next endpoint...")
+                continue
+    
+    return None

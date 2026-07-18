@@ -81,6 +81,13 @@ def _get_bot_client():
     return apps.get("app")
 
 
+def _get_userbot_client():
+    """Get the userbot client from clients dict. Returns None if not started yet."""
+    if clients:
+        return list(clients.values())[0]
+    return None
+
+
 class _BotProxy:
     """Proxy that forwards attribute access to apps['app'], the bot client.
     Allows plugins to use `bot.send_message(...)` without importing apps directly.
@@ -89,7 +96,9 @@ class _BotProxy:
     def __getattr__(self, name):
         client = _get_bot_client()
         if client is None:
-            raise RuntimeError("Bot client not started yet")
+            client = _get_userbot_client()
+            if client is None:
+                raise RuntimeError("No Telegram client started yet")
         if name == "edit_message":
             return self._edit_message
         return getattr(client, name)

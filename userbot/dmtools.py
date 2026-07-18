@@ -1,12 +1,11 @@
 import asyncio
-import random
 import logging
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.errors import FloodWait
 from tools import (
     HARDCODED_PREFIXES, edit_or_reply, sudoers_filter, retry,
-    is_admin_user, get_args_from_caret, RAID
+    is_admin_user, get_args_from_caret
 )
 from utils.message import Msg
 
@@ -14,7 +13,7 @@ logger = logging.getLogger("userbot")
 
 
 async def _dm_blast(client, message, *, verb, emoji, needs_text, make_provider, done_msg, sent_emoji):
-    """Shared DM flood loop for dmspam/dmraid.
+    """Shared DM flood loop for dmspam.
 
     make_provider(args) -> callable returning the text to send on each iteration.
     """
@@ -95,15 +94,4 @@ async def dmspam(client: Client, message: Message):
         verb="spam", emoji="📨", needs_text=True,
         make_provider=lambda args: (lambda: " ".join(args[1:])),
         done_msg=Msg.OK_DM_SPAM_DONE, sent_emoji="📨",
-    )
-
-
-@Client.on_message(filters.command("dmraid", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()) & filters.group)
-async def dmraid(client: Client, message: Message):
-    """Raid a user in their DM with random messages - works only in groups when replying to a user"""
-    await _dm_blast(
-        client, message,
-        verb="raid", emoji="💥", needs_text=False,
-        make_provider=lambda args: (lambda: random.choice(RAID)),
-        done_msg=Msg.OK_DM_RAID_DONE, sent_emoji="💥",
     )

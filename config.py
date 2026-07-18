@@ -86,11 +86,6 @@ class _MemoryCollection:
                     doc[f] = doc.get(f, 0) + v
         return _MemoryResult(matched=1, modified=1)
 
-    def delete_one(self, filt, *a, **kw):
-        key = self._key(filt)
-        self._docs.pop(key, None)
-        return _MemoryResult(matched=1)
-
     def find(self, filt=None, *a, **kw):
         if not filt:
             return list(self._docs.values())
@@ -128,7 +123,6 @@ admin_file = os.path.join(os.getcwd(), "data", "admins.txt")
 
 # Global variables
 clients = {}
-RAIDS = {}
 conversations = {}
 chat_queues = {}
 active_streams = {}

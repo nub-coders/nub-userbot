@@ -1,8 +1,4 @@
 
-from pyrogram.enums import MessageEntityType
-import json
-from convopyro import Conversation
-from convopyro import listen_message
 import logging
 from config import *
 from tools import *
@@ -17,7 +13,6 @@ logging.basicConfig(
 # Create a logger object
 logger = logging.getLogger("userbot")
 import os
-import shlex
 from random import randint
 from pyrogram import filters, enums
 from pyrogram.raw.functions.channels import GetFullChannel
@@ -42,23 +37,6 @@ def get_arg(message):
     if " ".join(split[1:]).strip() == "":
         return ""
     return " ".join(split[1:])
-
-def get_args(message):
-    try:
-        message = message.text
-    except AttributeError:
-        pass
-    if not message:
-        return False
-    message = message.split(maxsplit=1)
-    if len(message) <= 1:
-        return []
-    message = message[1]
-    try:
-        split = shlex.split(message)
-    except ValueError:
-        return message
-    return list(filter(lambda x: len(x) > 0, split))
 
 @Client.on_message(filters.command("vc1", prefixes=HARDCODED_PREFIXES) & filters.me & filters.group)
 @retry()

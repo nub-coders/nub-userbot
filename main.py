@@ -50,8 +50,6 @@ async def main():
     # Initialize conversation for userbot
     Conversation(userbot)
 
-    bot_started = False
-    userbot_started = False
     try:
         # Start bot client if it was created. A bot failure (e.g. FLOOD_WAIT
         # on auth.ImportBotAuthorization) must NOT take down the userbot — the
@@ -59,7 +57,6 @@ async def main():
         if app is not None:
             try:
                 await app.start()
-                bot_started = True
                 print(f"Bot started successfully!")
                 print(f"Bot logged in as: {app.me.first_name} (@{app.me.username})")
             except Exception as e:
@@ -67,7 +64,6 @@ async def main():
 
         # Start userbot client
         await userbot.start()
-        userbot_started = True
         print(f"Userbot started successfully!")
         print(f"Userbot logged in as: {userbot.me.first_name} (@{userbot.me.username})")
 

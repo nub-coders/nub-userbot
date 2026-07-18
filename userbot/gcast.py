@@ -69,7 +69,6 @@ async def gcast_handler(client, message):
         sed = 0
         owo = 0
         bl = 0
-        doc = file if file else text_or_file
         async for dialog in client.get_dialogs():
           if flag in ["-all", "-pvt", "-grp"]:
             if dialog.chat.id in blocked_list or dialog.chat.id in admin_ids:

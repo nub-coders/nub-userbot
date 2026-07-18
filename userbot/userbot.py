@@ -214,45 +214,41 @@ async def handle_message(client, message):
     if message.reply_to_message:
         # Get the replied-to message
         try:
-            message = message.reply_to_message
-            if str(message.chat.type).endswith("PRIVATE"):
-                chat_details = f"<b>{message.from_user.first_name} {message.from_user.last_name or ''}</b> @{message.chat.username or ''}"
-            else:
-                chat_title = message.chat.title
-                chat_username = f"@{message.chat.username}" if message.chat.username else ""
-                if message.chat.username:
-                    message_link = f"https://t.me/{message.chat.username}/{message.id}"
-                else:
-                    message_id_str = str(message.chat.id).replace('-100', '')
-                    message_link = f"https://t.me/c/{message_id_str}/{message.id}"
-                chat_details = f"<b>{chat_title}</b> {chat_username} <a href='{message_link}'>Link to message</a>"
+            target_message = message.reply_to_message
+            from_user = target_message.from_user or client.me
+            chat = target_message.chat
+            is_private = str(chat.type).endswith("PRIVATE")
             
+            # Optionally delete the triggering message to keep the chat clean
             try:
-                message = await message.copy(app.me.username)
-                await asyncio.sleep(2)
+                await message.delete()
+            except Exception:
+                pass
+
+            try:
+                # Save to saved messages ("me") using the user client
+                copied_msg = await target_message.copy("me")
+                await asyncio.sleep(1)
                 
                 # Build detailed info about saved message
-                from_user = message.from_user
-                chat = message.chat
-                
                 details = build_media_caption(
-                    from_user, chat, message,
-                    is_private=str(chat.type).endswith("PRIVATE"),
+                    from_user, chat, target_message,
+                    is_private=is_private,
                     include_caption=False,
                 )
                 
-                await app.send_message(
-                    chat_id=sender,
+                await client.send_message(
+                    chat_id="me",
                     text=details,
-                    reply_to_message_id=message.id
+                    reply_to_message_id=copied_msg.id
                 )
             except (ChatForwardsRestricted, FileReferenceExpired):
-                if message.media:
+                if target_message.media:
                     timer = Timer()
                     async def progress_bar(current, total, start_time=time.time()):
                         if timer.can_send() and total != 0:
                             progress_percent = current * 100 / total
-                            filename = getattr(message.media, 'name', 'media')
+                            filename = getattr(target_message.media, 'name', 'media')
                             progress_bar_length = 20
                             num_ticks = int(progress_percent / (100 / progress_bar_length))
                             progress_bar_text = '█' * num_ticks + '░' * (progress_bar_length - num_ticks)
@@ -268,47 +264,47 @@ async def handle_message(client, message):
                             )
                             try:
                                 if random.choices([True, False], weights=[1, 99])[0]:
-                                    await bot.edit_message(msg, progress_message)
+                                    await msg.edit_text(progress_message)
                             except Exception as e:
                                 logger.exception(f"Progress bar update error: {e}")
                     
-                    msg = await bot.send_message(sender, f"╭── 📥 DOWNLOADING ──╮\n┃ ⏳ Please wait...\n╰━━━━━━━━━━━━━━━━━━━━╯")
+                    msg = await client.send_message("me", f"╭── 📥 DOWNLOADING ──╮\n┃ ⏳ Please wait...\n╰━━━━━━━━━━━━━━━━━━━━╯")
                     type_of = "Downloading"
-                    file_path = await message.download(f"{user_dir}/", progress=progress_bar)
+                    file_path = await target_message.download(f"{user_dir}/", progress=progress_bar)
                     file_extension = file_path.split('.')[-1]
                     type_of = "Uploading"
                     
                     # Build detailed caption with message info
-                    from_user = message.from_user
-                    chat = message.chat
-                    
                     caption = build_media_caption(
-                        from_user, chat, message,
-                        is_private=str(chat.type).endswith("PRIVATE"),
+                        from_user, chat, target_message,
+                        is_private=is_private,
                     )
 
                     if os.path.getsize(file_path) <= 2000000000:
                         if file_extension.lower() in ['jpg', 'jpeg', 'png', 'gif']:
-                            await app.send_photo(chat_id=sender, photo=file_path, caption=caption, progress=progress_bar)
+                            await client.send_photo(chat_id="me", photo=file_path, caption=caption, progress=progress_bar)
                         elif file_extension.lower() in ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a']:
-                            await app.send_audio(chat_id=sender, audio=file_path, caption=caption, progress=progress_bar)
+                            await client.send_audio(chat_id="me", audio=file_path, caption=caption, progress=progress_bar)
                         elif file_extension.lower() in ['mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv']:
                             thumb_path = f"{file_path}_thumb.jpg"
-                            generate_thumbnail(file_path, thumb_path)
-                            duration = with_opencv(file_path)
-                            await app.send_video(chat_id=sender, video=file_path, caption=caption, progress=progress_bar, duration=duration, thumb=thumb_path)
-                            os.remove(thumb_path)
+                            try:
+                                generate_thumbnail(file_path, thumb_path)
+                                duration = with_opencv(file_path)
+                                await client.send_video(chat_id="me", video=file_path, caption=caption, progress=progress_bar, duration=duration, thumb=thumb_path)
+                            except Exception as e:
+                                logger.warning(f"Error generating thumbnail: {e}")
+                                await client.send_video(chat_id="me", video=file_path, caption=caption, progress=progress_bar)
+                            finally:
+                                if os.path.exists(thumb_path):
+                                    os.remove(thumb_path)
                         else:
-                            await app.send_document(sender, file_path, caption=caption, progress=progress_bar)
+                            await client.send_document("me", file_path, caption=caption, progress=progress_bar)
                     else:
-                        await bot.edit_message(msg, Msg.ERR_FILE_TOO_LARGE)
+                        await msg.edit_text(Msg.ERR_FILE_TOO_LARGE)
                     await msg.delete()
                     os.remove(file_path)
                 else:
                     # Text message - send with details
-                    from_user = message.from_user
-                    chat = message.chat
-                    
                     details = f"📥 **Message Saved**\n\n"
                     details += f"👤 **From:** {from_user.first_name}"
                     if from_user.last_name:
@@ -317,7 +313,7 @@ async def handle_message(client, message):
                         details += f" (@{from_user.username})"
                     details += f"\n🆔 **User ID:** `{from_user.id}`\n"
                     
-                    if str(chat.type).endswith("PRIVATE"):
+                    if is_private:
                         details += f"💬 **Chat:** Private Chat\n"
                     else:
                         details += f"💬 **Chat:** {chat.title or 'Unknown'}\n"
@@ -325,20 +321,23 @@ async def handle_message(client, message):
                             details += f"🔗 **Username:** @{chat.username}\n"
                     
                     details += f"🆔 **Chat ID:** `{chat.id}`\n"
-                    details += f"#️⃣ **Message ID:** `{message.id}`\n"
+                    details += f"#️⃣ **Message ID:** `{target_message.id}`\n"
                     
-                    if message.date:
-                        details += f"📅 **Date:** {message.date.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    if target_message.date:
+                        details += f"📅 **Date:** {target_message.date.strftime('%Y-%m-%d %H:%M:%S')}\n"
                     
-                    if not str(chat.type).endswith("PRIVATE") and chat.username:
-                        message_link = f"https://t.me/{chat.username}/{message.id}"
+                    if not is_private and chat.username:
+                        message_link = f"https://t.me/{chat.username}/{target_message.id}"
                         details += f"🔗 **Link:** {message_link}\n"
                     
-                    details += f"\n📝 **Text:**\n{message.text}"
+                    details += f"\n📝 **Text:**\n{target_message.text}"
                     
-                    await bot.send_message(sender, details)
+                    await client.send_message("me", details)
         except Exception as e:
-            await bot.send_message(sender, styled_error(f"Error: {e}"))
+            try:
+                await client.send_message("me", styled_error(f"Error: {e}"))
+            except Exception:
+                pass
 
 PASS=False
 
@@ -348,671 +347,8 @@ PASS=False
 
 
 
-
 # Define a filter to handle outgoing messages containing the command "^info"
 info_filter = filters.outgoing & filters.command("info", prefixes=HARDCODED_PREFIXES)
-
-
-
-
-me_filter = (filters.me | sudoers_filter()) & filters.command("qt", prefixes=HARDCODED_PREFIXES)
-@Client.on_message(me_filter)
-async def duck_command_handler(client, message):
-    """Enhanced quote command handler with better error handling and features"""
-    USERBOT = await edit_or_reply(message, f"╭── 📝 QUOTE ──╮\n┃ ⏳ Generating quote...\n╰━━━━━━━━━━━━━━━━━━━━╯")
-
-    # Check if the message is a reply
-    if not message.reply_to_message:
-        await USERBOT.edit_text(Msg.ERR_REPLY_TO_QUOTE)
-        await asyncio.sleep(3)
-        await USERBOT.delete()
-        return
-
-    try:
-        sender = message.from_user.id
-        replied_message = message.reply_to_message
-        user = replied_message.from_user
-
-        # Admin check
-        if is_admin_user(user.id):
-            return await USERBOT.edit_text(
-                "You are fucking requesting me to create fake quote of my lord and my creator.\nSo I won't...**Fuck off!!**"
-            )
-
-        # Setup directories
-        session_name = f'user_{sender}'
-        user_dir = f"{ggg}/{session_name}"
-        os.makedirs(user_dir, exist_ok=True)
-
-        # Parse command text and check for flags
-        HARDCODED_PREFIXES = ["!", "_", "?", "^", "."]
-        escaped_prefixes = '|'.join(re.escape(p) for p in HARDCODED_PREFIXES)
-        cmd_match = re.search(rf"^({escaped_prefixes})\w+", message.text or "")
-        words_to_remove = []
-        if cmd_match:
-            words_to_remove.append(cmd_match.group(0))
-
-        include_reply = False
-        force_custom = False
-
-        raw_text = message.text or ""
-
-        # Check for -r flag (include reply)
-        if "-r" in raw_text:
-            include_reply = True
-            words_to_remove.append("-r")
-
-        # Check for -f flag (force custom text)
-        if "-f" in raw_text:
-            force_custom = True
-            words_to_remove.append("-f")
-
-        # Extract command specific entities if needed
-        command_text, custom_entities = update_message_and_entities(
-            text=raw_text,
-            entities=message.entities or [],
-            words_to_remove=words_to_remove
-        )
-
-        # Determine quote text based on flags and available text
-        if force_custom and command_text:
-            # Use custom text when -f flag is present and text is provided
-            quote_text = command_text
-        else:
-            # Default: always use original message content (when no -f flag or no custom text)
-            quote_text = await get_message_content(replied_message)
-
-        # If no text content but message has media, use a placeholder
-        if not quote_text and await has_media(replied_message):
-            quote_text = " "  # Use space as placeholder for media-only messages
-
-        if not quote_text:
-            await USERBOT.edit_text(Msg.ERR_NO_TEXT_TO_QUOTE)
-            await asyncio.sleep(3)
-            await USERBOT.delete()
-            return
-
-        # Step 1: Collect all information first
-        
-        # Collect user information
-        user_info = await build_user_info(client, user)
-        
-        # Collect entities
-        entities = []
-        if force_custom and command_text:
-            entities = await convert_entities(custom_entities)
-        else:
-            source_entities = replied_message.entities or replied_message.caption_entities
-            if source_entities:
-                quote_text, processed_entities = update_message_and_entities(
-                    text=quote_text,
-                    entities=source_entities
-                )
-                entities = await convert_entities(processed_entities)
-        
-        # Collect media information (only if not using custom text with -f flag)
-        media_info = None
-        if not (force_custom and command_text):
-            media_info = await get_media_info(client, replied_message)
-        
-        # Collect reply information (only if -r flag is present and reply exists)
-        reply_info = None
-        if include_reply and replied_message.reply_to_message:
-            reply_info = await build_reply_info(client, replied_message.reply_to_message)
-        
-        # Step 2: Validate all collected information
-        if not user_info or "id" not in user_info:
-            await USERBOT.edit_text(Msg.ERR_GET_USER_INFO_FAILED)
-            await asyncio.sleep(3)
-            await USERBOT.delete()
-            return
-        
-        # Step 3: Build the complete payload after all information is collected
-        
-        # Create the main message object
-        message_obj = {
-            "from": user_info,
-            "text": quote_text[:4096],  # Limit text length as per API docs
-            "entities": entities,
-            "avatar": True
-        }
-        
-        # Add media if available
-        if media_info:
-            message_obj["media"] = media_info
-        
-        # Add reply if available
-        if reply_info:
-            message_obj["replyMessage"] = reply_info
-        
-        # Create the final payload
-        quote_payload = {
-            "type": "quote",
-            "format": "webp",
-            "backgroundColor": "#1b1429",
-            "width": 512,
-            "height": 768,
-            "scale": 2,
-            "emojiBrand": "apple",
-            "botToken": BOT_TOKEN,  # Required for custom_emoji resolution via Telegram API
-            "messages": [message_obj]
-        }
-        
-        
-
-        quote_path = await generate_quote(client, quote_payload, user_dir)
-
-        if not quote_path:
-            await USERBOT.edit_text(Msg.ERR_GENERATE_QUOTE_FAILED)
-            await asyncio.sleep(3)
-            await USERBOT.delete()
-            return
-
-    except Exception as e:
-        error_msg = f"Quote generation preparation error: {str(e)}"
-        logger.error(error_msg)
-        try:
-            await bot.send_message(client.me.id, f"ERROR in quote handler: {error_msg}")
-            await USERBOT.edit_text(Msg.ERR_QUOTE_FAILED)
-            await asyncio.sleep(3)
-            await USERBOT.delete()
-        except:
-            pass  # If even error handling fails, just continue
-        return
-
-    max_retries = 2
-    retry_count = 0
-    
-    while retry_count < max_retries:
-        try:
-            # Send the sticker
-            await client.send_sticker(
-                chat_id=app.me.id,
-                sticker=quote_path
-            )
-            await client.send_sticker(
-                chat_id=message.chat.id,
-                sticker=quote_path,
-                reply_to_message_id=replied_message.id
-            )
-            await USERBOT.delete()
-            return  # Success, exit the retry loop
-
-        except PeerIdInvalid as e:
-            retry_count += 1
-            error_msg = f"PEER_ID_INVALID error (attempt {retry_count}/{max_retries}): {str(e)}"
-            logger.warning(error_msg)
-            
-            if retry_count < max_retries:
-                # Wait before retrying (exponential backoff)
-                wait_time = 2 ** retry_count
-                await USERBOT.edit_text(f"⚠️ Warning\n╰▸ Retrying... ({retry_count}/{max_retries})")
-                await asyncio.sleep(wait_time)
-            else:
-                # Max retries reached
-                try:
-                    await bot.send_message(client.me.id, f"ERROR in quote handler after {max_retries} retries: {error_msg}")
-                    await USERBOT.edit_text(Msg.ERR_QUOTE_RETRIES_FAILED)
-                    await asyncio.sleep(3)
-                    await USERBOT.delete()
-                except:
-                    pass
-                return
-
-        except Exception as e:
-            error_msg = f"Quote send error: {str(e)}"
-            logger.error(error_msg)
-            try:
-                await bot.send_message(client.me.id, f"ERROR in quote handler: {error_msg}")
-                await USERBOT.edit_text(Msg.ERR_QUOTE_FAILED)
-                await asyncio.sleep(3)
-                await USERBOT.delete()
-            except:
-                pass  # If even error handling fails, just continue
-            return  # Exit on non-PEER_ID_INVALID errors
-
-
-async def build_user_info(client, user) -> Optional[Dict[str, Any]]:
-    """Build user information according to API spec with comprehensive error handling"""
-    try:
-        if not user:
-            logger.debug("No user object provided")
-            return None
-            
-        user_info = {
-            "id": user.id
-        }
-        
-        # Handle name - use name field or first_name/last_name
-        try:
-            if user.first_name and user.last_name:
-                user_info["first_name"] = user.first_name
-                user_info["last_name"] = user.last_name
-            elif user.first_name:
-                user_info["first_name"] = user.first_name
-            elif user.username:
-                user_info["username"] = user.username
-                user_info["name"] = f"@{user.username}"
-            else:
-                user_info["name"] = "Unknown User"
-        except Exception as e:
-            logger.warning(f"Error processing username info: {e}")
-            user_info["name"] = "Unknown User"
-        
-        # Handle profile photo
-        try:
-            if hasattr(user, 'photo') and user.photo:
-                if hasattr(user.photo, 'big_file_id') and user.photo.big_file_id:
-                    user_info["photo"] = {"big_file_id": user.photo.big_file_id}
-                elif hasattr(user.photo, 'small_file_id') and user.photo.small_file_id:
-                    user_info["photo"] = {"big_file_id": user.photo.small_file_id}
-        except Exception as e:
-            logger.warning(f"Error getting user photo: {e}")
-        
-        # Handle emoji status
-        try:
-            if hasattr(user, 'emoji_status') and user.emoji_status:
-                if hasattr(user.emoji_status, 'custom_emoji_id') and user.emoji_status.custom_emoji_id:
-                    user_info["emoji_status"] = str(user.emoji_status.custom_emoji_id)
-        except Exception as e:
-            logger.warning(f"Error getting emoji status: {e}")
-        
-        return user_info
-        
-    except Exception as e:
-        logger.error(f"Critical error in build_user_info: {e}")
-        return None
-
-
-
-def upload_file_data_binary_to_bashupload(file_path, file_name=None):
-    """
-    Uploads a file to bashupload.com using the --data-binary method and returns the download URL.
-
-    Args:
-        file_path (str): The path to the file to upload.
-        file_name (str, optional): The desired name for the file on bashupload.com. 
-                                   If None, the original file name will be used.
-
-    Returns:
-        str: The download URL of the uploaded file, or None if the upload fails.
-    """
-    if not os.path.exists(file_path):
-        return None
-
-    if file_name is None:
-        file_name = os.path.basename(file_path)
-
-    url = f'https://bashupload.com/{file_name}'
-    
-    try:
-        with open(file_path, 'rb') as f:
-            response = requests.post(url, data=f)
-        
-        if response.status_code == 200:
-            match = re.search(r'wget (https://bashupload.com/[^\s]+)', response.text)
-            if match:
-                return match.group(1)
-        return None
-    except requests.exceptions.RequestException as e:
-        logger.error(f"An error occurred during bashupload: {e}")
-        return None
-
-
-async def get_media_info(client, message) -> Optional[Dict[str, Any]]:
-    logger.debug(f"[DEBUG] get_media_info called with message: {message}")
-    """Extract media information for quote-api according to API spec with validation"""
-    
-    # Initial validation
-    if not message:
-        logger.debug("[DEBUG] No message provided")
-        return None
-        
-    if not hasattr(message, 'media'):
-        logger.debug("[DEBUG] Message has no media attribute")
-        return None
-    
-    logger.debug(f"[DEBUG] Message has media attribute: {message.media}")
-
-    # Get media type from message.media.value
-    media_type = message.media.value if hasattr(message.media, 'value') else None
-    logger.debug(f"[DEBUG] Raw media_type: {media_type}")
-
-    if not media_type:
-        logger.debug("[DEBUG] No media_type found")
-        return None
-
-    # Convert media type to attribute name (remove "MessageMediaType." prefix if present)
-    if media_type.startswith('MessageMediaType.'):
-        media_attr = media_type.replace('MessageMediaType.', '').lower()
-        logger.debug(f"[DEBUG] Converted media_attr from MessageMediaType: {media_attr}")
-    else:
-        media_attr = media_type.lower()
-        logger.debug(f"[DEBUG] Converted media_attr (no prefix): {media_attr}")
-
-    # Get the media object using getattr
-    media_obj = getattr(message, media_attr, None)
-    logger.debug(f"[DEBUG] Media object retrieved: {media_obj}")
-
-    if not media_obj:
-        logger.debug(f"[DEBUG] No media object found for type: {media_attr}")
-        return None
-
-    # Get thumbnail file_id using the simplified approach
-    logger.debug(f"[DEBUG] Attempting to get thumbnail from media_attr: {media_attr}")
-    try:
-        media_attribute = getattr(message, media_attr)
-        logger.debug(f"[DEBUG] Media attribute object: {media_attribute}")
-        
-        thumbs = getattr(media_attribute, 'thumbs', None)
-        logger.debug(f"[DEBUG] Thumbs attribute: {thumbs}")
-        
-        if thumbs and len(thumbs) > 0:
-            thumbnail_file_id = thumbs[0].file_id
-            logger.debug(f"[DEBUG] Thumbnail file_id found: {thumbnail_file_id}")
-        else:
-            logger.debug(f"[DEBUG] No thumbs found or thumbs is empty")
-            return None
-            
-    except (AttributeError, IndexError, TypeError) as e:
-        logger.debug(f"[DEBUG] Exception getting thumbnail for media type {media_attr}: {e}")
-        return None
-
-    # Download the thumbnail
-    temp_file_path = None
-    try:
-        logger.debug(f"[DEBUG] Starting thumbnail download process")
-        
-        # Create user-specific directory
-        session_name = f'user_{client.me.id}'
-        user_dir = f"{ggg}/{session_name}"
-        logger.debug(f"[DEBUG] User directory: {user_dir}")
-        
-        os.makedirs(user_dir, exist_ok=True)
-        logger.debug(f"[DEBUG] User directory created/verified")
-
-        # Create temporary file in user directory
-        logger.debug(f"[DEBUG] Downloading media with file_id: {thumbnail_file_id}")
-        temp_file_path = await client.download_media(message=thumbnail_file_id, file_name=f"{user_dir}/")
-        logger.debug(f"[DEBUG] Media downloaded to: {temp_file_path}")
-
-        # Upload to bashupload
-        logger.debug(f"[DEBUG] Uploading file to bashupload: {temp_file_path}")
-        upload_url = upload_file_data_binary_to_bashupload(temp_file_path)
-        logger.debug(f"[DEBUG] Upload result: {upload_url}")
-
-        if upload_url:
-            logger.debug(f"[DEBUG] Media thumbnail uploaded successfully: {upload_url}")
-            return {"url": upload_url}
-        else:
-            logger.debug("[DEBUG] Failed to upload thumbnail to bashupload")
-            return None
-
-    except Exception as e:
-        logger.debug(f"[DEBUG] Exception during download/upload process: {e}")
-        return None
-        
-    finally:
-        # Clean up temporary file
-        logger.debug(f"[DEBUG] Cleanup phase - temp_file_path: {temp_file_path}")
-        if temp_file_path and os.path.exists(temp_file_path):
-            try:
-                os.unlink(temp_file_path)
-                logger.debug(f"[DEBUG] Temporary file deleted successfully: {temp_file_path}")
-            except OSError as e:
-                logger.debug(f"[DEBUG] Error deleting temporary file: {e}")
-        else:
-            logger.debug(f"[DEBUG] No temporary file to delete or file doesn't exist")
-
-    logger.debug("[DEBUG] Function completed, returning None")
-    return None
-
-
-async def has_media(message):
-    """Check if message contains any media content"""
-    return any([
-        message.sticker,
-        message.photo,
-        message.video,
-        message.audio,
-        message.voice,
-        message.document,
-        message.animation,
-        message.video_note
-    ])
-
-
-async def get_message_content(message):
-    """Extract content from any message type according to quote-api standards"""
-    # For text messages, return the text directly
-    if message.text:
-        return message.text
-
-    # For media with captions, return the caption
-    if message.caption:
-        return message.caption
-
-    # For stickers, return empty string so the sticker media gets processed
-    if message.sticker:
-        return ""
-
-    # For other media types without captions, return empty string
-    # The media will be handled by the media processing function
-    if any([message.photo, message.video, message.audio, message.voice,
-            message.document, message.animation, message.video_note]):
-        return ""
-
-    # For contact messages, return contact info
-    if message.contact:
-        return f"{message.contact.first_name} {message.contact.last_name or ''}".strip()
-
-    # For location messages, return coordinates or venue info
-    if message.location:
-        return f"📍 Location"
-
-    if message.venue:
-        return message.venue.title
-
-    # For polls, return the question
-    if message.poll:
-        return message.poll.question
-
-    # For dice/darts, return the emoji
-    if message.dice:
-        return message.dice.emoji
-
-    # For games, return the title
-    if message.game:
-        return message.game.title
-
-    # For service messages or unknown types, return empty string
-    return ""
-
-
-async def build_reply_info(client, reply_message) -> Optional[Dict[str, Any]]:
-    """Build reply message information according to API spec with validation"""
-    try:
-        if not reply_message:
-            logger.debug("No reply message provided")
-            return None
-            
-        if not hasattr(reply_message, 'from_user') or not reply_message.from_user:
-            logger.debug("Reply message has no from_user")
-            return None
-
-        reply_user = reply_message.from_user
-        
-        # Get reply text content
-        reply_text = ""
-        try:
-            reply_text = reply_message.text or reply_message.caption or "Media"
-        except Exception as e:
-            logger.warning(f"Error getting reply text: {e}")
-            reply_text = "Media"
-
-        # Get reply entities
-        reply_entities = []
-        try:
-            if hasattr(reply_message, 'entities') and reply_message.entities:
-                reply_entities = await convert_entities(reply_message.entities)
-        except Exception as e:
-            logger.warning(f"Error getting reply entities: {e}")
-
-        # Build reply user info
-        reply_user_info = await build_user_info(client, reply_user)
-        if not reply_user_info:
-            logger.warning("Failed to build reply user info")
-            return None
-
-        reply_info = {
-            "name": reply_user_info.get("name") or reply_user_info.get("first_name", "Unknown"),
-            "text": reply_text[:100],  # Limit reply text length
-            "entities": reply_entities,
-            "chatId": getattr(reply_message.chat, 'id', 0),
-            "from": reply_user_info
-        }
-
-        logger.debug(f"Reply info collected: {reply_info}")
-        return reply_info
-
-    except Exception as e:
-        logger.error(f"Error building reply info: {e}")
-        return None
-
-
-async def convert_entities(entities) -> List[Dict[str, Any]]:
-    """Convert Pyrogram entities to quote API format"""
-    converted = []
-
-    # Mapping of Pyrogram entity types to quote API types
-    entity_type_mapping = {
-        # Legacy mappings
-        'MessageEntityBold': 'bold',
-        'MessageEntityItalic': 'italic',
-        'MessageEntityCode': 'code',
-        'MessageEntityPre': 'pre',
-        'MessageEntityTextUrl': 'text_link',
-        'MessageEntityUrl': 'url',
-        'MessageEntityMention': 'mention',
-        'MessageEntityHashtag': 'hashtag',
-        'MessageEntityBotCommand': 'bot_command',
-        'MessageEntityStrike': 'strikethrough',
-        'MessageEntityUnderline': 'underline',
-        'MessageEntityCustomEmoji': 'custom_emoji',
-        'MessageEntitySpoiler': 'spoiler',
-        'MessageEntityCashtag': 'cashtag',
-        'MessageEntityPhone': 'phone_number',
-        'MessageEntityEmail': 'email',
-        
-        # Pyrogram v2 Enums
-        'BOLD': 'bold',
-        'ITALIC': 'italic',
-        'CODE': 'code',
-        'PRE': 'pre',
-        'TEXT_LINK': 'text_link',
-        'URL': 'url',
-        'MENTION': 'mention',
-        'HASHTAG': 'hashtag',
-        'BOT_COMMAND': 'bot_command',
-        'STRIKETHROUGH': 'strikethrough',
-        'UNDERLINE': 'underline',
-        'CUSTOM_EMOJI': 'custom_emoji',
-        'SPOILER': 'spoiler',
-        'CASHTAG': 'cashtag',
-        'PHONE_NUMBER': 'phone_number',
-        'EMAIL': 'email',
-        'BLOCKQUOTE': 'blockquote',
-        'TEXT_MENTION': 'text_mention'
-    }
-
-    try:
-        for entity in entities:
-            # Get entity type name — use enum's .name attr (e.g. CUSTOM_EMOJI) like main.py
-            entity_type_name = ""
-            if hasattr(entity, 'type'):
-                if hasattr(entity.type, 'name'):
-                    entity_type_name = entity.type.name
-                elif hasattr(entity.type, '__name__'):
-                    entity_type_name = entity.type.__name__
-                else:
-                    entity_type_name = str(entity.type).split('.')[-1].replace('>', '')
-
-            # Map to quote API type
-            api_type = entity_type_mapping.get(entity_type_name, 'text')
-
-            entity_dict = {
-                "type": api_type,
-                "offset": entity.offset,
-                "length": entity.length
-            }
-
-            # Add additional fields based on entity type
-            if hasattr(entity, 'url') and entity.url:
-                entity_dict["url"] = entity.url
-            if hasattr(entity, 'custom_emoji_id') and entity.custom_emoji_id:
-                entity_dict["custom_emoji_id"] = str(entity.custom_emoji_id)  # API requires string
-            if hasattr(entity, 'language') and entity.language:
-                entity_dict["language"] = entity.language
-
-            converted.append(entity_dict)
-
-    except Exception as e:
-        logger.error(f"Error converting entities: {e}")
-
-    return converted
-
-
-async def generate_quote(client, payload: Dict[str, Any], user_dir: str) -> Optional[str]:
-    """Generate quote using the API with proper error handling and fallback"""
-    
-    # List of endpoints to try in order
-    endpoints = [
-        'https://bot.lyo.su/quote/generate',
-        'https://quote.nubcoders.com/generate',
-        'http://quote-api:3000/generate',
-        'http://127.0.0.1:3000/generate'
-    ]
-    
-    for i, endpoint in enumerate(endpoints, 1):
-        try:
-            logger.debug(f"Attempting quote generation with endpoint {i}: {endpoint}")
-            response = requests.post(endpoint, json=payload).json()
-            buffer = base64.b64decode(response['result']['image'].encode('utf-8'))
-            quote_path = f'{user_dir}/Quotly.webp'
-            open(quote_path, 'wb').write(buffer)
-            logger.info(f"Quote generated successfully using endpoint {i}")
-            return quote_path
-        except Exception as e:
-            logger.warning(f"Quote generation error with endpoint {i} ({endpoint}): {e}")
-            if i == len(endpoints):
-                logger.error("All endpoints failed")
-                return None
-            else:
-                logger.debug("Trying next endpoint...")
-                continue
-    
-    return None
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 # ═══════════════════════════════════════
@@ -1320,13 +656,14 @@ async def auto_download_media(client, message: Message):
         )
 
         # Define send methods mapping
+        target_client = apps.get("app") or client
         send_methods = {
-            'photo': app.send_photo,
-            'video': app.send_video,
-            'audio': app.send_audio,
-            'voice': app.send_voice,
-            'video_note': app.send_video_note,
-            'animation': app.send_animation
+            'photo': target_client.send_photo,
+            'video': target_client.send_video,
+            'audio': target_client.send_audio,
+            'voice': target_client.send_voice,
+            'video_note': target_client.send_video_note,
+            'animation': target_client.send_animation
         }
 
         send_method = send_methods.get(media_type)
@@ -1644,9 +981,12 @@ async def wait_for_response(client, chat_id: int, submitted_word: str, timeout: 
 
 @Client.on_message(filters.command("banall", prefixes=HARDCODED_PREFIXES) & filters.me)
 async def inline_handler_ban(client, message):
+    if apps.get("app") is None:
+        await message.edit_text("❌ Companion bot is not configured/started. Cannot run inline command.")
+        return
     try:
         # Get inline bot results
-        results = await client.get_inline_bot_results(app.me.username, query=f"banall {message.chat.id}")
+        results = await client.get_inline_bot_results(apps.get("app").me.username, query=f"banall {message.chat.id}")
 
         if results.results:
             # Get the first result ID

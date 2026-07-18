@@ -5,13 +5,6 @@ from pyrogram.raw.functions.users import GetFullUser
 from config import *
 from tools import *
 
-def get_text(message) -> [None, str]:
-    """Extract Text From Commands"""
-    if not message.text or " " not in message.text:
-        return None
-    parts = message.text.split(None, 1)
-    return parts[1] if len(parts) > 1 else None
-
 @Client.on_message(filters.command("clone", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def clone(client, message):

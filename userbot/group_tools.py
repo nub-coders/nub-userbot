@@ -140,10 +140,6 @@ async def inv(client, message):
                 await mg.delete()
 
 # Helper function to split users into chunks
-def user_list(users, chunk_size):
-    for i in range(0, len(users), chunk_size):
-        yield users[i:i + chunk_size]
-
 def user_dist(l, n):
     for i in range(0, len(l), n):
         yield l[i: i + n]
@@ -192,19 +188,6 @@ async def invite_to_voice_chat(client, message):
         await asyncio.sleep(10)  # Wait for 10 seconds before inviting the next chunk
 
     await message.edit(f"Finished inviting users. Total invited: {z}")
-
-def get_text(message) -> [None, str]:
-    """Extract Text From Commands"""
-    text_to_return = message.text
-    if message.text is None:
-        return None
-    if " " in text_to_return:
-        try:
-            return message.text.split(None, 1)[1]
-        except IndexError:
-            return None
-    else:
-        return None
 
 @Client.on_message(filters.command("admins", prefixes=HARDCODED_PREFIXES) & filters.me & filters.group)
 @retry()

@@ -1,12 +1,10 @@
 
-from pyrogram.enums import MessageEntityType as MET, ChatAction as CA
 from pyrogram.errors.exceptions import PeerFlood, UserRestricted
 from pyrogram.enums import ChatMembersFilter, UserStatus
 from config import *
 from tools import *
 
 ggg = os.getcwd()
-RAIDS = {}
 
 # Configure the logger
 logging.basicConfig(
@@ -15,55 +13,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("spam")
 
-def is_raid_user():
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(client, message):
-            try:
-                user_data = user_sessions.find_one({"user_id": client.me.id}) or {}
-                raid_control = user_data.get('raiding', False)
-                
-                if not message.from_user or not raid_control:
-                    return  # Silent exit if not in raid mode
-                
-                # Get raid user list
-                raid_listed = user_data.get('raid_users', [])
-                
-                # Check if user is admin
-                if os.path.exists(admin_file):
-                    with open(admin_file, "r") as file:
-                        admin_ids = [int(line.strip()) for line in file.readlines()]
-                        if message.from_user.id in admin_ids:
-                            return  # Silent exit for admins
-                
-                # Check if user is in raid list
-                if message.from_user.id in raid_listed:
-                    # User is in raid list, proceed with command
-                    return await func(client, message)
-                else:
-                    return  # Silent exit if not in raid list
-            except Exception as e:
-                print(f"Error in is_raid_user decorator: {e}")
-                return
-        return wrapper
-    return decorator
-
-
-create_raid_filter = filters.create(
-    lambda _, client, message: (
-        message.from_user
-        and message.from_user.id in getuser_data(client.me.id).get('raid_users', [])))
-
 spam_chats = []
-
-# Helper function to split users into chunks
-def user_list(users, chunk_size):
-    for i in range(0, len(users), chunk_size):
-        yield users[i:i + chunk_size]
-
-def user_dist(l, n):
-    for i in range(0, len(l), n):
-        yield l[i: i + n]
 
 def get_arg(message) -> [None, str]:
     """Extract Text From Commands"""
@@ -308,71 +258,3 @@ async def cancel_spam(client, message):
         except:
             pass
         return await message.edit("**Dismissing Mention.**")
-
-@Client.on_message(filters.command("raid", prefixes=HARDCODED_PREFIXES) & filters.me)
-@retry()
-async def raid(xspam: Client, e: Message):
-    pass
-
-@Client.on_message(filters.command("replyraid", prefixes=HARDCODED_PREFIXES) & filters.me)
-@retry()
-async def activate_reply_raid(c: Client,m: Message):
-    user_data = user_sessions.find_one({"user_id": c.me.id}) or {}
-    raid_listed = user_data.get('raid_users', [])
-    if m.forward_from:
-        return
-    if m.reply_to_message_id:
-        repl_to = m.reply_to_message.from_user
-        if not repl_to:
-            await m.reply_text("Rreply to and user")
-            return
-        u_id = repl_to.id
-        username = f"@{repl_to.username}" if repl_to.username else repl_to.mention
-        Pbx = await m.reply_text("Reply Raid Activating....")
-        if u_id not in raid_listed:
-             user_sessions.update_one(
-                {"user_id": c.me.id},
-                {"$push": {"raid_users": u_id}}
-            )
-             await Pbx.edit_text(f"Reply Raid has been activated on {username}")
-        else:
-            await Pbx.edit_text("You already have started reply raid for this user")
-    else:
-        try:
-            user = int(m.command[1])
-        except ValueError:
-            user = m.command[1]
-            if m.entities[1] and m.entities[1].type == MET.TEXT_MENTION:
-                user = m.entities[1].user.id
-        except:
-            await m.reply_text("Either reply to an user mesaage or give me and user id")
-        try:
-            user = await c.get_users(user)
-        except Exception:
-            to_del = await m.reply_text("Unable to fetch user from the given entity")
-            await asyncio.sleep(10)
-            await m.delete(True)
-            await to_del.delete(True)
-            return
-        Pbx = await m.reply_text("Reply Raid Activating....")
-        u_id = user.id
-        username = f"@{user.username}" if user.username else user.mention
-
-        if u_id not in raid_listed:
-             user_sessions.update_one(
-                {"user_id": c.me.id},
-                {"$push": {"raid_users": u_id}}
-            )
-             await Pbx.edit_text(f"Reply Raid has been activated on {username}")
-        else:
-            await Pbx.edit_text("You already have started reply raid for this user")
-
-@Client.on_message(create_raid_filter)
-@retry()
-@is_raid_user()
-async def raiding(c, m):
-    message = random.choice(RAID)
-    await c.send_chat_action(m.chat.id, CA.TYPING)
-    await asyncio.sleep(1)
-    await m.reply_text(message)
-    await c.send_chat_action(m.chat.id, CA.CANCEL)

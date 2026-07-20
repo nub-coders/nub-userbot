@@ -20,7 +20,7 @@ ERROR = "<b>Eval Expression:</b>\n<pre>{}</pre>\n<b>Error:</b>\n<pre>{}</pre>"
 SUCCESS = "<b>Eval Expression:</b>\n<pre>{}</pre>\n<b>Success</b>"
 RESULT = "<b>Eval Expression:</b>\n<pre>{}</pre>\n<b>Result:</b>\n<pre>{}</pre>"
 
-@Client.on_message(filters.me & filters.command('eval', prefixes='^'))
+@Client.on_message(filters.me & filters.command('eval', prefixes=HARDCODED_PREFIXES))
 @retry()
 async def eval_expression(client, message):
     

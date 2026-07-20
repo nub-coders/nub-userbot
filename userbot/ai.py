@@ -94,7 +94,7 @@ async def safe_edit(message: Message, text: str):
 
 
 
-@Client.on_message(filters.me & filters.command(list(commands.keys()), prefixes="/"))
+@Client.on_message(filters.me & filters.command(list(commands.keys()), prefixes=HARDCODED_PREFIXES))
 @retry()
 async def ai_handler(client: Client, message: Message):
     user_id = message.from_user.id

@@ -205,12 +205,19 @@ def styled_help_card(cmd, desc, usage, example="", note="", flags="", warning=""
 
 def update_message_and_entities(text, entities, words_to_remove=None):
     """Remove command words/flags from text and adjust entity offsets."""
+    if not text:
+        return "", entities or []
+
+    entities = list(entities) if entities else []
+
     if not words_to_remove:
         return text, entities
 
     for word in words_to_remove:
-        idx = text.find(word)
-        if idx != -1:
+        while True:
+            idx = text.find(word)
+            if idx == -1:
+                break
             text = text[:idx] + text[idx + len(word):]
             removed_len = len(word)
             entities = [
@@ -222,9 +229,6 @@ def update_message_and_entities(text, entities, words_to_remove=None):
                     e.offset -= removed_len
 
     text = " ".join(text.split()).strip()
-    parts = text.split(None, 1)
-    if parts:
-        text = parts[1] if len(parts) > 1 else ""
     return text, entities
 
 

@@ -402,12 +402,18 @@ async def duck_command_handler(client, message):
         return
 
     try:
-        sender = message.from_user.id
+        sender = message.from_user.id if message.from_user else message.chat.id
         replied_message = message.reply_to_message
-        user = replied_message.from_user
+        user = replied_message.from_user or replied_message.sender_chat
+
+        if not user:
+            await USERBOT.edit_text(Msg.ERR_GET_USER_INFO_FAILED)
+            await asyncio.sleep(3)
+            await USERBOT.delete()
+            return
 
         # Admin check
-        if is_admin_user(user.id):
+        if hasattr(user, 'id') and is_admin_user(user.id):
             return await USERBOT.edit_text(
                 "You are fucking requesting me to create fake quote of my lord and my creator.\nSo I won't...**Fuck off!!**"
             )
@@ -604,10 +610,6 @@ async def duck_command_handler(client, message):
     try:
         # Send the sticker
         await client.send_sticker(
-            chat_id=apps.get("app").me.id if apps.get("app") is not None else "me",
-            sticker=quote_path
-        )
-        await client.send_sticker(
             chat_id=message.chat.id,
             sticker=quote_path,
             reply_to_message_id=replied_message.id
@@ -647,19 +649,27 @@ async def build_user_info(client, user) -> Optional[Dict[str, Any]]:
             return None
             
         user_info = {
-            "id": user.id
+            "id": getattr(user, "id", 0)
         }
         
-        # Handle name - use name field or first_name/last_name
+        # Handle name - use name field or first_name/last_name or title
         try:
-            if user.first_name and user.last_name:
-                user_info["first_name"] = user.first_name
-                user_info["last_name"] = user.last_name
-            elif user.first_name:
-                user_info["first_name"] = user.first_name
-            elif user.username:
-                user_info["username"] = user.username
-                user_info["name"] = f"@{user.username}"
+            first_name = getattr(user, "first_name", None)
+            last_name = getattr(user, "last_name", None)
+            title = getattr(user, "title", None)
+            username = getattr(user, "username", None)
+
+            if first_name and last_name:
+                user_info["first_name"] = first_name
+                user_info["last_name"] = last_name
+            elif first_name:
+                user_info["first_name"] = first_name
+            elif title:
+                user_info["first_name"] = title
+                user_info["name"] = title
+            elif username:
+                user_info["username"] = username
+                user_info["name"] = f"@{username}"
             else:
                 user_info["name"] = "Unknown User"
         except Exception as e:

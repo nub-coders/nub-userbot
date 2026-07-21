@@ -1,4 +1,5 @@
 
+import json
 import requests
 import base64
 import asyncio
@@ -33,10 +34,11 @@ async def tinying(client ,message):
     if ik.endswith(".tgs"):
         await client.download_media(reply, "man.tgs")
         await bash("lottie_convert.py man.tgs json.json")
-        json = open("json.json", "r")
-        jsn = json.read()
+        with open("json.json", "r") as f:
+            jsn = f.read()
         jsn = jsn.replace("512", "2000")
-        ("json.json", "w").write(jsn)
+        with open("json.json", "w") as f:
+            f.write(jsn)
         await bash("lottie_convert.py json.json man.tgs")
         file = "man.tgs"
         os.remove("json.json")

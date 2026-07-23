@@ -3,14 +3,8 @@ import sys
 import logging
 import os
 import re
-import json
-import time
-from typing import List, Dict, Optional, Tuple
-from datetime import datetime
-from yt_dlp import YoutubeDL
+from typing import Tuple
 import yt_dlp
-from tools import *
-from config import *
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +64,8 @@ def format_duration(seconds):
     logger.debug(f"Formatted duration {seconds}s to {formatted}")
     return formatted
 
-def time_to_seconds(time):
-    stringt = str(time)
+def time_to_seconds(time_str):
+    stringt = str(time_str)
     logger.debug(f"Converting time {stringt} to seconds")
     try:
         seconds = sum(int(x) * 60**i for i, x in enumerate(reversed(stringt.split(":"))))
@@ -99,9 +93,9 @@ async def handle_youtube_ytdlp(argument):
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             if is_url:
-                 info_dict = ydl.extract_info(argument, download=False)
+                info_dict = ydl.extract_info(argument, download=False)
             else:
-                info_dict= ydl.extract_info(f"ytsearch:{argument}", download=False)['entries'][0]
+                info_dict = ydl.extract_info(f"ytsearch:{argument}", download=False)['entries'][0]
 
             if not info_dict:
                 return None
@@ -117,7 +111,7 @@ async def handle_youtube_ytdlp(argument):
             if isinstance(duration_raw, str):
                 try:
                     duration_sec = time_to_seconds(duration_raw)
-                except:
+                except Exception:
                     duration_sec = 0
             else:
                 duration_sec = int(duration_raw) if duration_raw else 0
@@ -126,8 +120,7 @@ async def handle_youtube_ytdlp(argument):
 
             thumbnail_url = 'N/A'
             if 'thumbnails' in info_dict and info_dict['thumbnails']:
-                 thumbnail_url = info_dict['thumbnails'][-1]['url']
-
+                thumbnail_url = info_dict['thumbnails'][-1]['url']
 
             return (title, duration_formatted, youtube_link, thumbnail_url, channel_name, views, video_id)
 

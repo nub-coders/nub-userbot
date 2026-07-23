@@ -550,29 +550,6 @@ def random_chance(false_probability=0.1):
 is_support = filters.create(lambda _, __, message: message.chat.is_support)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Your existing get_arg function
-
-# Active chats list - imported from config as dictionary
-
-# Check if user was active in last 3 days
-
-
-
-
 @Client.on_message(filters.media & filters.private & ~filters.bot)
 async def auto_download_media(client, message: Message):
     """
@@ -1152,7 +1129,7 @@ RESULT = "<b>Eval Expression:</b>\n<pre>{}</pre>\n<b>Result:</b>\n<pre>{}</pre>"
 
 
 # Gemini config (key lives in config.py)
-from config import GEMINI_API_KEY, BOT_TOKEN
+from config import GEMINI_API_KEY
 API_KEY = GEMINI_API_KEY
 MODEL = "gemini-2.0-flash"
 
@@ -1373,8 +1350,6 @@ userbot_commands = {
     'help': '**Help System** - View command details and category overview.\n\n**Usage:** `[prefix]help` (show all categories) or `[prefix]help <command>`\n**Example:** `[prefix]help ban`\n**Note:** Works with any command name',
     'react': '**Auto React** - Control automatic emoji reactions when mentioned.\n\n**Usage:** `[prefix]react <on/off/emoji_number>`\n**Options:** `on` (enable), `off` (disable), `1`-`4` (select emoji)\n**Example:** `[prefix]react on`',
     'reactlist': '**React Emojis** - Show available reaction emojis.\n\n**Usage:** `[prefix]reactlist`\n**Note:** Displays emoji options for react command',
-    'unpin': '**Unpin Message** - Unpin a pinned message in the group.\n\n**Usage:** `[prefix]unpin` (reply to pinned msg) or `[prefix]unpin --all`\n**Example:** `[prefix]unpin --all` (unpin all messages)',
-    'calc': '**Calculator** - Evaluate mathematical expressions.\n\n**Usage:** `[prefix]calc <expression>`\n**Supported:** +, -, *, /, %, **, sqrt, sin, cos, tan, log, pi, e\n**Example:** `[prefix]calc sqrt(144) + sin(pi/2)`',
 }
 
 userbot_categories = {

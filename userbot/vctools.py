@@ -46,7 +46,7 @@ async def opengc(client, message):
         chat_id = message.chat.title
     else:
         chat_id = message.chat.id
-    args = f"**Started Group Call"
+    args = "**Started Group Call"
     try:
         if not vctitle:
             await client.invoke(
@@ -66,7 +66,8 @@ CreateGroupCall(
             )
         await message.edit(args)
     except Exception as e:
-        await message.edit(f"Failed to start group call")
+        logger.error(f"Failed to start group call: {e}")
+        await message.edit("Failed to start group call")
 
 
 @Client.on_message(filters.command("vc0", prefixes=HARDCODED_PREFIXES) & filters.me & filters.group)

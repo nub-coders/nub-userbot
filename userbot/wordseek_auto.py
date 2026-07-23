@@ -4,7 +4,6 @@ Automatically plays WordSeek Telegram bot games with intelligent solving
 """
 
 import asyncio
-import json
 import re
 import logging
 from typing import Dict, Optional, List
@@ -445,7 +444,6 @@ async def show_game_info(client: Client, message: Message):
 @Client.on_message(filters.command('wordseek',prefixes=HARDCODED_PREFIXES) & filters.me)
 async def wordseek_info(client: Client, message: Message):
     """Show WordSeek auto-play info and trigger words"""
-    chat_id = message.chat.id
     supported = get_supported_lengths()
 
     words = ", ".join(sorted(TRIGGER_WORDS))

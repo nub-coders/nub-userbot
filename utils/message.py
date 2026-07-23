@@ -356,8 +356,7 @@ class Msg:
     @staticmethod
     def pong(latency_ms: float) -> str:
         """Ping result (Moon-Userbot style)."""
-        label   = font.smallcaps("Pong")
-        lat_lbl = font.smallcaps("Latency")
+        label = font.smallcaps("Pong")
         return f"<b>{label}!</b> <code>{latency_ms:.0f}ms</code>"
 
     @staticmethod

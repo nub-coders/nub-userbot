@@ -46,7 +46,7 @@ _SIZE_LIMIT = 2_000_000_000  # 2 GB; larger files go to gofile via big_file()
 
 
 def _user_dir(sender):
-    d = f"{ggg}/user_{sender}"
+    d = f"user_{sender}"
     os.makedirs(d, exist_ok=True)
     return d
 

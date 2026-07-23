@@ -43,7 +43,7 @@ import certifi
 # Initialize magic for file type detection
 mime = magic.Magic(mime=True)
 
-from config import apps, clients, user_sessions, admin_file, SUDO, HARDCODED_PREFIXES, ggg
+from config import apps, clients, user_sessions, admin_file, SUDO, HARDCODED_PREFIXES
 
 # Simple TTL cache for user session data
 import threading

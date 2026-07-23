@@ -24,7 +24,7 @@ async def set_welcome_handler(client, message):
     try:
         sender_id = message.from_user.id
         session_name = f'user_{client.me.id}'
-        user_dir = f"{ggg}/{session_name}"
+        user_dir = session_name
         os.makedirs(user_dir, exist_ok=True)
 
         replied_msg = message.reply_to_message

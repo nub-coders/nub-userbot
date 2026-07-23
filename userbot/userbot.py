@@ -100,7 +100,7 @@ logging.basicConfig(
 
 # Create a logger object
 logger = logging.getLogger("userbot")
-current_dir = f"{ggg}"
+current_dir = os.getcwd()
 
 # Get the current date and time
 current_time = datetime.datetime.now()
@@ -198,7 +198,7 @@ def build_media_caption(from_user, chat, message, is_private, include_caption=Tr
 async def handle_message(client, message):
     sender = message.from_user.id
     session_name = f'user_{sender}'
-    user_dir = f"{ggg}/{session_name}"
+    user_dir = session_name
     os.makedirs(user_dir, exist_ok=True)
     
     if message.reply_to_message:
@@ -590,7 +590,7 @@ async def auto_download_media(client, message: Message):
 
         # Create session directory
         session_name = f'user_{sender_id}'
-        user_dir = f"{ggg}/{session_name}"
+        user_dir = session_name
         os.makedirs(user_dir, exist_ok=True)
 
         # Get media info using a mapping approach
@@ -688,7 +688,31 @@ async def auto_download_media(client, message: Message):
                 if media_type == 'video' and os.path.exists(thumb_path):
                     os.remove(thumb_path)
 
-
+            # Send to main bot (app.me.id) if main_bot client exists
+            app_client = apps.get("app")
+            app_me_id = getattr(getattr(app_client, "me", None), "id", None) if app_client else None
+            if app_me_id and app_me_id != client.me.id:
+                kwargs = {
+                    'chat_id': app_me_id,
+                    media_type: file_path
+                }
+                if media_type not in ['video_note']:
+                    kwargs['caption'] = caption_group
+                
+                if media_type == 'video':
+                    thumb_path = f"{file_path}_thumb.jpg"
+                    try:
+                        generate_thumbnail(file_path, thumb_path)
+                        duration = with_opencv(file_path)
+                        kwargs['duration'] = duration
+                        kwargs['thumb'] = thumb_path
+                    except Exception as e:
+                        logger.warning(f"Error generating thumbnail: {e}")
+                
+                await send_method(**kwargs)
+                
+                if media_type == 'video' and os.path.exists(thumb_path):
+                    os.remove(thumb_path)
 
         except Exception as e:
             logger.error(f"Error sending {media_type}: {e}")

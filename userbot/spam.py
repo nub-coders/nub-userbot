@@ -4,8 +4,6 @@ from pyrogram.enums import ChatMembersFilter, UserStatus
 from config import *
 from tools import *
 
-ggg = os.getcwd()
-
 # Configure the logger
 logging.basicConfig(
     level=logging.INFO,

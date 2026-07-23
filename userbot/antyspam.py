@@ -79,7 +79,7 @@ async def handle_user(client, message):
         users = user_data.get('users', {})
         user_count = users.get(str(sender_id), 0)
         session_name = f'user_{client.me.id}'
-        user_dir = f"{ggg}/{session_name}"
+        user_dir = session_name
         os.makedirs(user_dir, exist_ok=True)
         full_name = f"{message.from_user.first_name} {message.from_user.last_name or ''}"
         spam_control = user_data.get('Spam_control', True)
@@ -89,7 +89,7 @@ async def handle_user(client, message):
         block_count = user_data.get('block_count', 0)
         if user_count == 1:
             session_name = f'user_{client.me.id}'
-            user_dir = f"{ggg}/{session_name}"
+            user_dir = session_name
             os.makedirs(user_dir, exist_ok=True)
             photu = None
             async for photo in client.get_chat_photos(client.me.id):

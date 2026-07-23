@@ -80,7 +80,7 @@ logging.basicConfig(
 # Create a logger object
 logger = logging.getLogger("userbot")
 
-current_dir = f"{ggg}"
+current_dir = os.getcwd()
 
 # Get the current date and time
 current_time = datetime.datetime.now()
@@ -185,7 +185,7 @@ async def download_media_with_progress(client, msg, media_msg, type_of):
     start_time = time.time()
     filename = getattr(media_msg, 'file_name', 'file')
     session_name = f'user_{client.me.id}'
-    user_dir = f"{ggg}/{session_name}/{msg.chat.id}"
+    user_dir = f"{session_name}/{msg.chat.id}"
     os.makedirs(user_dir, exist_ok=True)
     try:
         file_path = await client.download_media(media_msg,file_name=f"{user_dir}/",
@@ -318,7 +318,7 @@ async def play_handler_func(client, message):
     if str(message.chat.id) == '-1001806816712':
          return
     session_name = f'user_{client.me.id}'
-    user_dir = f"{ggg}/{session_name}"
+    user_dir = session_name
     os.makedirs(user_dir, exist_ok=True)
     by = message.from_user
     escaped_prefixes = '|'.join(re.escape(p) for p in HARDCODED_PREFIXES)

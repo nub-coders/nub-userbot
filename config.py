@@ -137,7 +137,6 @@ StartTime = time.time()
 from collections import defaultdict
 SUDO = defaultdict(list)
 
-ggg = os.getcwd()
 from fonts import *
 from pyrogram import Client, filters
 from convopyro import Conversation

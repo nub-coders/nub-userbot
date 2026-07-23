@@ -99,7 +99,7 @@ async def pingme(client, message):
 async def get_globals(client):
     user_id = client.me.id
     session_name = f'user_{user_id}'
-    user_dir = f"{ggg}/{session_name}"
+    user_dir = session_name
     os.makedirs(user_dir, exist_ok=True)
     try:
        logo = gvarstatus(user_id, "ALIVE_LOGO") or (await client.download_media(client.me.photo.big_file_id, f"{user_dir}/{'logo.mp4' if client.me.photo.has_animation else 'logo.jpg'}") if client.me.photo else "userbot.jpg")

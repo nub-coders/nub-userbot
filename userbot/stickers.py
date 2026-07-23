@@ -420,7 +420,7 @@ async def duck_command_handler(client, message):
 
         # Setup directories
         session_name = f'user_{sender}'
-        user_dir = f"{ggg}/{session_name}"
+        user_dir = session_name
         os.makedirs(user_dir, exist_ok=True)
 
         # Parse command text and check for flags
@@ -687,7 +687,7 @@ async def build_user_info(client, user) -> Optional[Dict[str, Any]]:
                 
                 if file_id:
                     session_name = f'user_{client.me.id}'
-                    user_dir = f"{ggg}/{session_name}"
+                    user_dir = session_name
                     os.makedirs(user_dir, exist_ok=True)
                     photo_path = await client.download_media(file_id, file_name=f"{user_dir}/")
                     if photo_path and os.path.exists(photo_path):
@@ -823,7 +823,7 @@ async def get_media_info(client, message) -> Optional[Dict[str, Any]]:
         
         # Create user-specific directory
         session_name = f'user_{client.me.id}'
-        user_dir = f"{ggg}/{session_name}"
+        user_dir = session_name
         logger.debug(f"[DEBUG] User directory: {user_dir}")
         
         os.makedirs(user_dir, exist_ok=True)

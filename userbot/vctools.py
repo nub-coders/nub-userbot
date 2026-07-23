@@ -20,8 +20,7 @@ from pyrogram.raw.functions.messages import GetFullChat
 from pyrogram.raw.functions.phone import CreateGroupCall, DiscardGroupCall
 from pyrogram.raw.types import InputGroupCall, InputPeerChannel, InputPeerChat
 
-ggg=os.getcwd()
-current_dir = f"{ggg}"
+current_dir = os.getcwd()
 
 
 

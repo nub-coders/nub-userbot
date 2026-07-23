@@ -8,7 +8,7 @@ from convopyro import Conversation, listen_message
 from config import *
 from tools import *
 
-current_dir = ggg
+current_dir = os.getcwd()
 
 # Pyrogram client setup
 create_channel_filter = filters.create(
@@ -25,7 +25,7 @@ async def forward_message_handler(client, message):
         if getattr(message, 'service', None):
             return
         session_name = f'user_{sender}'
-        user_dir = f"{ggg}/{session_name}"
+        user_dir = session_name
         os.makedirs(user_dir, exist_ok=True)
         channel_name = message.chat.title
         channel_username = f"@{message.chat.username}" if message.chat.username else ""

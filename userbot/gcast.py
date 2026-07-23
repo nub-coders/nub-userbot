@@ -12,7 +12,7 @@ from tools import *
 async def gcast_handler(client, message):
     """Handles the /gcast command."""
     session_name = f'user_{client.me.id}'
-    user_dir = f"{ggg}/{session_name}"
+    user_dir = session_name
     os.makedirs(user_dir, exist_ok=True)
     user_id = client.me.id
     user_data = user_sessions.find_one({"user_id": user_id}) or {}

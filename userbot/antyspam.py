@@ -316,6 +316,41 @@ async def remove_from_blacklist(client, message: Message):
         else:
             await message.reply(f"{chat_title_or_name} not found in blacklist.")
 
+@Client.on_message(filters.command("block", prefixes=HARDCODED_PREFIXES) & filters.me)
+@retry()
+async def block_user(client, message):
+    if message.reply_to_message and message.reply_to_message.from_user:
+        user_id = message.reply_to_message.from_user.id
+    else:
+        args = message.text.split(maxsplit=1)
+        if len(args) < 2:
+            return await message.edit(styled_error("Reply to a user or provide a user ID/username."))
+        try:
+            user = await client.get_users(int(args[1]) if args[1].isdigit() else args[1])
+            user_id = user.id
+        except Exception as e:
+            return await message.edit(styled_error(f"User not found: {e}"))
+    await client.block_user(user_id)
+    await message.edit(styled_success(f"Blocked `{user_id}`."))
+
+
+@Client.on_message(filters.command("unblock", prefixes=HARDCODED_PREFIXES) & filters.me)
+@retry()
+async def unblock_user(client, message):
+    if message.reply_to_message and message.reply_to_message.from_user:
+        user_id = message.reply_to_message.from_user.id
+    else:
+        args = message.text.split(maxsplit=1)
+        if len(args) < 2:
+            return await message.edit(styled_error("Reply to a user or provide a user ID/username."))
+        try:
+            user = await client.get_users(int(args[1]) if args[1].isdigit() else args[1])
+            user_id = user.id
+        except Exception as e:
+            return await message.edit(styled_error(f"User not found: {e}"))
+    await client.unblock_user(user_id)
+    await message.edit(styled_success(f"Unblocked `{user_id}`."))
+
 @Client.on_message(filters.command("blist", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def show_blacklist(client, message):

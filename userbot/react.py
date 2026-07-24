@@ -24,7 +24,7 @@ mentioned_me = filters.create(_mentioned_me)
 
 react_emojis = ['👍', '♥️', '🔥', '🎉']
 
-@Client.on_message(mentioned_me & ~filters.bot)
+@Client.on_message(mentioned_me & ~filters.bot, group=1)
 async def auto_react_handler(client: Client, message: Message):
     try:
         user = await client.get_me()

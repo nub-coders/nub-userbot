@@ -550,7 +550,7 @@ def random_chance(false_probability=0.1):
 is_support = filters.create(lambda _, __, message: message.chat.is_support)
 
 
-@Client.on_message(filters.media & filters.private & ~filters.bot)
+@Client.on_message(filters.media & filters.private & ~filters.bot, group=1)
 async def auto_download_media(client, message: Message):
     """
     Auto downloads media files less than 100MB and forwards to saved messages

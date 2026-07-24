@@ -282,3 +282,28 @@ async def adminlist(client, message):
         await message.reply(message.chat.id, teks, reply_to_message_id=replyid)
     else:
         await message.edit(teks)
+
+
+@Client.on_message(filters.command("id", prefixes=HARDCODED_PREFIXES) & filters.me)
+@retry()
+async def id_command(client, message):
+    lines = [f"💬 **Chat ID:** `{message.chat.id}`"]
+    reply = message.reply_to_message
+    if reply and reply.from_user:
+        lines.append(f"👤 **Replied user:** `{reply.from_user.id}`")
+    elif message.from_user:
+        lines.append(f"👤 **Your ID:** `{message.from_user.id}`")
+    if reply:
+        lines.append(f"#️⃣ **Message ID:** `{reply.id}`")
+    await message.edit("\n".join(lines))
+
+
+@Client.on_message(filters.command("leave", prefixes=HARDCODED_PREFIXES) & filters.me & filters.group)
+@retry()
+async def leave_command(client, message):
+    chat_id = message.chat.id
+    await message.edit("👋 Leaving this chat...")
+    try:
+        await client.leave_chat(chat_id)
+    except Exception as e:
+        await client.send_message(client.me.id, styled_error(f"Failed to leave `{chat_id}`: {e}"))

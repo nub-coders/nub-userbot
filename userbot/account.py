@@ -157,3 +157,32 @@ async def session_handler(client, message):
     
     # Edit the message with the session details
     await message.edit_text(session_info)
+
+
+@Client.on_message(filters.command("bio", prefixes=HARDCODED_PREFIXES) & filters.me)
+@retry()
+async def set_bio(client, message):
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        return await message.edit(styled_error("Usage: `.bio <text>` (max 70 chars)"))
+    bio = args[1]
+    if len(bio) > 70:
+        return await message.edit(styled_error("Bio must be 70 characters or fewer."))
+    await client.update_profile(bio=bio)
+    await message.edit(styled_success(f"Bio updated to:\n`{bio}`"))
+
+
+@Client.on_message(filters.command("pfp", prefixes=HARDCODED_PREFIXES) & filters.me & filters.reply)
+@retry()
+async def set_pfp(client, message):
+    reply = message.reply_to_message
+    if not (reply.photo or (reply.document and "image" in (reply.document.mime_type or ""))):
+        return await message.edit(styled_error("Reply to a photo to set it as your profile picture."))
+    await message.edit("`Updating profile photo...`")
+    path = await reply.download()
+    try:
+        await client.set_profile_photo(photo=path)
+        await message.edit(styled_success("Profile photo updated."))
+    finally:
+        if path and os.path.exists(path):
+            os.remove(path)

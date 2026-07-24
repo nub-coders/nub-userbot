@@ -295,6 +295,17 @@ async def id_command(client, message):
         lines.append(f"👤 **Your ID:** `{message.from_user.id}`")
     if reply:
         lines.append(f"#️⃣ **Message ID:** `{reply.id}`")
+        # media file IDs
+        _MEDIA = ("photo", "video", "audio", "voice", "video_note", "animation", "document", "sticker")
+        for attr in _MEDIA:
+            obj = getattr(reply, attr, None)
+            if obj:
+                lines.append(f"📎 **File ID ({attr}):** `{obj.file_id}`")
+                thumb = getattr(obj, "thumbs", None) or getattr(obj, "thumb", None)
+                if thumb:
+                    t = thumb[0] if isinstance(thumb, list) else thumb
+                    lines.append(f"🖼 **Thumbnail File ID:** `{t.file_id}`")
+                break
     await message.edit("\n".join(lines))
 
 

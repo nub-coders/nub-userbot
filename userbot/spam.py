@@ -253,6 +253,6 @@ async def cancel_spam(client, message):
     else:
         try:
             spam_chats.remove(message.chat.id)
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"cancel_spam: removing chat failed: {e}")
         return await message.edit("**Dismissing Mention.**")

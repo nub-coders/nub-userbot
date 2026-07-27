@@ -184,7 +184,8 @@ async def spinner(message: Message):
             await asyncio.sleep(0.8)  # Reduced update frequency
         except asyncio.CancelledError:
             break
-        except:
+        except Exception as e:
+            logger.debug(f"AI progress animation edit failed: {e}")
             await asyncio.sleep(1)
 
 async def process_gemini_request(system_prompt, user_input, max_tokens):

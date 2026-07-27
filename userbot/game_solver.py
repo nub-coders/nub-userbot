@@ -5,8 +5,11 @@ Analyzes game feedback and provides optimal word guesses
 
 import json
 import os
+import logging
 from collections import Counter
 from typing import Set, List, Dict, Tuple
+
+logger = logging.getLogger("game_solver")
 
 
 class WordSolver:
@@ -59,14 +62,14 @@ class WordSolver:
 
                         if words_by_len:
                             total = sum(len(s) for s in words_by_len.values())
-                            print(f"[SOLVER] Loaded {total} words (by lengths: {list(words_by_len.keys())}) from {path}")
+                            logger.info(f"Loaded {total} words (by lengths: {list(words_by_len.keys())}) from {path}")
                             return words_by_len
                 except Exception as e:
-                    print(f"[SOLVER] Error loading {path}: {e}")
+                    logger.warning(f"Error loading {path}: {e}")
                     continue
         
         # ponytail: no hardcoded fallback — trust the JSON word files
-        print("[SOLVER] No word file found; returning empty set")
+        logger.warning("No word file found; returning empty set")
         return {}
 
     def _load_common_words(self, filename: str) -> Set[str]:
@@ -90,10 +93,10 @@ class WordSolver:
                             words = {w.strip().lower() for w in data.keys() if isinstance(w, str)}
                         else:
                             continue
-                        print(f"[SOLVER] Loaded {len(words)} common words from {path}")
+                        logger.info(f"Loaded {len(words)} common words from {path}")
                         return words
                 except Exception as e:
-                    print(f"[SOLVER] Error loading {path}: {e}")
+                    logger.warning(f"Error loading {path}: {e}")
                     continue
 
         return set()

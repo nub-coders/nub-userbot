@@ -4,11 +4,14 @@ import asyncio
 import os
 import base64
 import magic
+import logging
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.errors import FloodWait
 from config import *
 from tools import *
+
+logger = logging.getLogger("antyspam")
 
 # Initialize magic for file type detection
 mime = magic.Magic(mime=True)
@@ -38,7 +41,7 @@ async def handle_user(client, message):
     if getattr(message, 'service', None):
         return
         
-    print("Handling user...")
+    logger.debug("Handling user...")
     sender_id = message.from_user.id
 
     # Check if the user is an admin
@@ -49,18 +52,18 @@ async def handle_user(client, message):
                return
     if message.chat.id == 777000:
       return
-    print(f"Sender ID: {sender_id}")
+    logger.debug(f"Sender ID: {sender_id}")
     # Check if user is whitelisted
     user_data = user_sessions.find_one({"user_id": client.me.id})
     if user_data:
         users = user_data.get('users', {})
         spam_control = user_data.get('Spam_control', True)
         if not spam_control:
-            print("Spam control is off, returning.")
+            logger.debug("Spam control is off, returning.")
             return
         white_listed = user_data.get('white_listed', [])
         if sender_id in white_listed:
-            print("User is whitelisted. Skipping...")
+            logger.debug("User is whitelisted. Skipping...")
             return
     
     # Update user count in user_sessions
@@ -71,7 +74,7 @@ async def handle_user(client, message):
         },
         upsert=True
     )
-    print("User count updated.")
+    logger.debug("User count updated.")
 
     # Check if user should be blocked
     user_data = user_sessions.find_one({"user_id": client.me.id})
@@ -122,26 +125,26 @@ message.chat.id, message.from_user.first_name)
                warning_message = bold_cool(f'Auto-block mode activated.\n\nYour message was flagged as potentially unwanted. Further messages from you will result in your account being blocked.')
                await client.send_message(message.chat.id, warning_message)
             elif user_count > block_count:
-               print("Blocking user...")
+               logger.debug("Blocking user...")
                await client.block_user(sender_id)
         elif delete_count > 0 and (block_count > delete_count or block_count ==0):
             if delete_count == user_count:
                warning_message = bold_cool('Auto-delete mode activated.\n\nYour message was flagged as potentially irrelevant. All subsequent messages from you will be automatically deleted.')
                await client.send_message(message.chat.id, warning_message)
             elif user_count > delete_count:
-               print("Blocking user...")
+               logger.debug("Blocking user...")
                await message.delete()
 
 @Client.on_message(filters.command("approve", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
 @retry()
 async def approve_user(client, message):
-    print("Approving user...")
+    logger.debug("Approving user...")
     chat_id = message.chat.id
     try:
         await client.unblock_user(chat_id)
-        print(f"User {chat_id} unblocked.")
+        logger.debug(f"User {chat_id} unblocked.")
     except Exception as e:
-        print(f"Error unblocking user {chat_id}: {e}")
+        logger.warning(f"Error unblocking user {chat_id}: {e}")
 
     user_data = user_sessions.find_one({"user_id": client.me.id})
     if user_data:
@@ -151,17 +154,17 @@ async def approve_user(client, message):
                 {"user_id": client.me.id},
                 {"$push": {"white_listed": chat_id}}
             )
-            print(f"User {chat_id} added to whitelist.")
+            logger.debug(f"User {chat_id} added to whitelist.")
             await message.edit_text("You have been approved and added to the whitelist.")
         else:
-            print(f"User {chat_id} is already in the whitelist.")
+            logger.debug(f"User {chat_id} is already in the whitelist.")
             await message.edit_text("You are already in the whitelist.")
     else:
         user_sessions.insert_one({
             "user_id": client.me.id,
             "white_listed": [chat_id]
         })
-        print(f"User {chat_id} added to whitelist (new entry).")
+        logger.debug(f"User {chat_id} added to whitelist (new entry).")
         await message.edit_text("You have been approved and added to the whitelist.")
 
 @Client.on_message(filters.command("disapprove", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
@@ -179,19 +182,19 @@ async def disapprove_user(client, message):
                     "$set": {f"users.{chat_id}": 0}
                 }
             )
-            print(f"User {chat_id} removed from whitelist and user count reset.")
+            logger.debug(f"User {chat_id} removed from whitelist and user count reset.")
             await message.edit_text("You have been removed from the whitelist and your message count has been reset.")
         else:
-            print(f"User {chat_id} is not in the whitelist.")
+            logger.debug(f"User {chat_id} is not in the whitelist.")
             await message.edit_text("You are not in the whitelist.")
     else:
-        print(f"No data found for user_id {client.me.id}.")
+        logger.warning(f"No data found for user_id {client.me.id}.")
         await message.edit_text("No data found for the bot user.")
 
 @Client.on_message(filters.command("rmall", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
 @retry()
 async def remove_all_whitelisted_users(client, message):
-    print("Removing all whitelisted users...")
+    logger.debug("Removing all whitelisted users...")
 
     result = user_sessions.update_one(
         {"user_id": client.me.id},
@@ -199,16 +202,16 @@ async def remove_all_whitelisted_users(client, message):
     )
     
     if result.modified_count > 0:
-        print("All whitelisted users removed.")
+        logger.debug("All whitelisted users removed.")
         await message.edit_text("All whitelisted users have been removed.")
     else:
-        print("No whitelisted users to remove.")
+        logger.debug("No whitelisted users to remove.")
         await message.edit_text("There were no whitelisted users to remove.")
 
 @Client.on_message(filters.command("rstall", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
 @retry()
 async def reset_all_users_count(client, message):
-    print("Resetting all users' counts to 0...")
+    logger.debug("Resetting all users' counts to 0...")
     
     user_data = user_sessions.find_one({"user_id": client.me.id})
     if user_data:
@@ -219,16 +222,16 @@ async def reset_all_users_count(client, message):
                     {"user_id": client.me.id},
                     {"$set": {f"users.{user_id}": 0}}
                 )
-        print("All users' counts have been reset to 0.")
+        logger.debug("All users' counts have been reset to 0.")
         await message.edit_text("All users' message counts have been reset to 0.")
     else:
-        print(f"No data found for user_id {client.me.id}.")
+        logger.warning(f"No data found for user_id {client.me.id}.")
         await message.edit_text("No data found for the bot user.")
 
 @Client.on_message(filters.command("rst", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
 @retry()
 async def reset_user_count(client, message):
-    print("Resetting user count for specific chat...")
+    logger.debug("Resetting user count for specific chat...")
     chat_id = str(message.chat.id)  # Ensure chat_id is a string to match MongoDB keys
 
     user_data = user_sessions.find_one({"user_id": client.me.id})
@@ -239,13 +242,13 @@ async def reset_user_count(client, message):
                 {"user_id": client.me.id},
                 {"$set": {f"users.{chat_id}": 0}}
             )
-            print(f"User count for {chat_id} has been reset to 0.")
+            logger.debug(f"User count for {chat_id} has been reset to 0.")
             await message.edit_text(f"Your message count has been reset to 0.")
         else:
-            print(f"No count found for {chat_id}.")
+            logger.debug(f"No count found for {chat_id}.")
             await message.edit_text("No count found for your chat ID.")
     else:
-        print(f"No data found for user_id {client.me.id}.")
+        logger.warning(f"No data found for user_id {client.me.id}.")
         await message.edit_text("No data found for the bot user.")
 
 @Client.on_message(filters.command("addbl", prefixes=HARDCODED_PREFIXES) & filters.me)

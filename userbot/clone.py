@@ -1,9 +1,12 @@
 
 import os
+import logging
 from pyrogram import Client, filters
 from pyrogram.raw.functions.users import GetFullUser
 from config import *
 from tools import *
+
+logger = logging.getLogger("clone")
 
 @Client.on_message(filters.command("clone", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
@@ -38,8 +41,8 @@ async def clone(client, message):
 
        await client.set_profile_photo(photo=poto)
        pfp = True
-    except:
-       pass
+    except Exception as e:
+       logger.warning(f"clone: setting profile photo failed: {e}")
     await client.update_profile(
         first_name=f_name, last_name= l_name,
         bio=c_bio,

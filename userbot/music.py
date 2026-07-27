@@ -249,7 +249,8 @@ stream_url = None,
 forceplay = False):
     try:
         duration_in_seconds = time_to_seconds(duration) - 3
-    except:
+    except Exception as e:
+        logger.debug(f"duration parse failed for {duration!r}: {e}")
         duration_in_seconds = 0
     put = {
         "message": message,
@@ -445,7 +446,8 @@ async def play_handler_func(client, message):
                 f"╰▸ Try a different search query"
             )
                 return await remove_active_chat(client, target_chat_id)
-            except:
+            except Exception as e:
+                logger.debug(f"No-results edit failed: {e}")
                 return await remove_active_chat(client, target_chat_id)
     else:
         try:
@@ -455,7 +457,8 @@ async def play_handler_func(client, message):
                 f"╰▸ Usage: `[prefix]play <song name>`"
             )
             return await remove_active_chat(client, target_chat_id)
-        except:
+        except Exception as e:
+            logger.debug(f"No-query edit failed: {e}")
             return
 
     # Use the same client for joining calls
@@ -527,8 +530,8 @@ async def skip_handler_func(client, message):
                 try:
                     if call_py:
                         await call_py.pause(message.chat.id)
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Pause before skip failed: {e}")
                 await join_call(next_song['message'], next_song['title'], next_song['client'], next_song['yt_link'], next_song['chat'], next_song['by'], next_song['duration'], next_song['mode'], next_song.get('stream_url'))
             else:
                 if call_py:
@@ -631,9 +634,10 @@ async def loop_handler_func(client, message):
             )
 
     except Exception as e:
+        logger.warning(f"Music command failed: {e}")
         await client.send_message(
             message.chat.id,
-            Msg.card("Music Error", [f"An error occurred: {str(e)}"], emoji=Msg.EMOJI_ERROR), reply_to_message_id=message.id
+            Msg.card("Music Error", ["Something went wrong."], emoji=Msg.EMOJI_ERROR), reply_to_message_id=message.id
         )
 
 # Event handlers for stream end and voice chat events

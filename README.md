@@ -1,6 +1,11 @@
 
 # 🤖 Advanced Nub Userbot
 
+[![Tests](https://github.com/nub-coders/nub-userbot/actions/workflows/test.yml/badge.svg)](https://github.com/nub-coders/nub-userbot/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/github/license/nub-coders/nub-userbot)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/nub-coders/nub-userbot?style=flat)](https://github.com/nub-coders/nub-userbot/stargazers)
+[![Python](https://img.shields.io/badge/python-3.13-blue)](https://www.python.org)
+
 A feature-rich Telegram userbot built with Pyrogram, offering a wide range of automation and utility features for power users.
 
 ## ✨ Features

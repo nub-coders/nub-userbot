@@ -1,0 +1,16 @@
+# Scoped lint gate. This codebase intentionally uses `from tools import *` /
+# `from config import *` for plugin ergonomics, so the star-import and
+# unused-import rules (F401/F403/F405) are noise here. We gate only on
+# defect-class rules that were green after the Phase 1 hygiene pass, so CI
+# catches regressions (e.g. a new bare `except:` or an undefined name) without
+# drowning in legacy style findings.
+extend-exclude = ["data"]
+
+[lint]
+select = [
+    "E9",    # syntax errors
+    "E722",  # bare except
+    "F63",   # bad comparisons / assertions
+    "F7",    # statement misuse (break/continue/return outside scope, etc.)
+    "F82",   # undefined name / undefined name in __all__
+]

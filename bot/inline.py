@@ -1,8 +1,11 @@
 
+import logging
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from config import *
 from tools import *
+
+logger = logging.getLogger("inline")
 
 async def _send_inline_result(client, message, index):
     try:
@@ -22,7 +25,8 @@ async def _send_inline_result(client, message, index):
         else:
             await message.reply("No inline results found.")
     except Exception as e:
-        await message.reply(f"An error occurred: {e}")
+        logger.warning(f"Inline result send failed: {e}")
+        await message.reply("Something went wrong sending that.")
 
 
 @Client.on_message(filters.command("me") & filters.me)

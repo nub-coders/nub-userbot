@@ -47,7 +47,7 @@ async def add_to_sudo(client, message):
     target_user_id, user = resolved
 
     # Check if target user is already admin (only when resolved from an id arg)
-    if user is None and is_admin_user(target_user_id):
+    if user is None and is_admin(target_user_id):
         return await message.reply(f"**This user is already an owner!**")
 
     # Get current sudo users

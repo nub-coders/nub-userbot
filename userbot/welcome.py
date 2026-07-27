@@ -5,7 +5,9 @@ import re
 from pyrogram import Client, filters
 from tools import *
 import magic
+import logging
 
+logger = logging.getLogger("welcome")
 mime = magic.Magic(mime=True)
 
 async def convert_to_image(message, client):
@@ -16,7 +18,7 @@ async def convert_to_image(message, client):
             return file_path
         return None
     except Exception as e:
-        print(f"Error converting sticker: {e}")
+        logger.warning(f"Error converting sticker: {e}")
         return None
 
 @Client.on_message(filters.command("setwelkm", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
@@ -160,7 +162,7 @@ async def set_welcome_handler(client, message):
                 )
 
         except Exception as e:
-            print(f"Error showing preview: {str(e)}")
+            logger.warning(f"Error showing preview: {e}")
             welcome_text = gvarstatus(sender_id, "WELCOME")
             if welcome_text:
                 await client.send_message(
@@ -170,7 +172,7 @@ async def set_welcome_handler(client, message):
 
     except Exception as e:
         error_msg = f"❌ Error: `{str(e)}`"
-        print(f"Error for user {message.from_user.id}: {str(e)}")
+        logger.warning(f"Welcome error for user {message.from_user.id}: {e}")
         return await message.reply_text(error_msg)
 
 @Client.on_message(filters.command("resetwelkm", prefixes=HARDCODED_PREFIXES) & filters.me)

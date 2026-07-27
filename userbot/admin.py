@@ -22,7 +22,8 @@ async def is_user_admin(client: Client, chat_id: int, user_id: int) -> bool:
     try:
         member = await client.get_chat_member(chat_id, user_id)
         return member.status in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR]
-    except:
+    except Exception as e:
+        logger.debug(f"is_user_admin check failed: {e}")
         return False
 
 async def get_user_from_arg(client: Client, arg: str):
@@ -36,7 +37,8 @@ async def get_user_from_arg(client: Client, arg: str):
         else:
             user = await client.get_users(arg)
         return user
-    except:
+    except Exception as e:
+        logger.debug(f"get_user_from_arg failed for {arg!r}: {e}")
         return None
 
 async def get_user_privileges(client: Client, chat_id: int, user_id: int):
@@ -60,7 +62,8 @@ async def get_user_privileges(client: Client, chat_id: int, user_id: int):
             return member.privileges
         else:
             return None
-    except:
+    except Exception as e:
+        logger.debug(f"get_user_privileges failed: {e}")
         return None
 
 async def get_target_user(client: Client, message: Message, parts: list):
@@ -317,8 +320,8 @@ async def promote_handler(client: Client, message: Message):
                     user_id=target_user.id,
                     title=title
                 )
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"set_administrator_title failed: {e}")
         
         # Build response message
         response = f"✅ {target_user.mention} has been promoted with: {', '.join(permissions_granted)}"

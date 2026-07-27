@@ -93,7 +93,8 @@ async def end_group_call(client, message):
                     return
         await message.edit_text("No active group call found")
     except Exception as e:
-        await message.edit_text(f"An error occurred: {e}")
+        logger.warning(f"End group call failed: {e}")
+        await message.edit_text("Something went wrong ending the call.")
 
 
 

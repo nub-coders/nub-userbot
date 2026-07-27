@@ -1055,8 +1055,8 @@ async def unban_all_users(client, message):
                         
                         try:
                             await status_msg.edit(progress_message)
-                        except:
-                            pass  # Ignore edit rate limits
+                        except Exception as e:
+                            logger.debug(f"Unban-all progress edit failed: {e}")  # usually rate limits
                     
                     # Small delay to avoid rate limits
                     await asyncio.sleep(0.1)
@@ -1092,8 +1092,8 @@ async def unban_all_users(client, message):
                 message.chat.id, 
                 styled_error(f"Unban all failed: {str(e)}")
             )
-        except:
-            pass
+        except Exception as inner:
+            logger.debug(f"Unban-all error report failed: {inner}")
 # Run the userbot
 # Create the custom filter
 

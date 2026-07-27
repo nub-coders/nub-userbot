@@ -43,6 +43,8 @@ import certifi
 # Initialize magic for file type detection
 mime = magic.Magic(mime=True)
 
+logger = logging.getLogger("tools")
+
 from config import apps, clients, user_sessions, admin_file, SUDO, HARDCODED_PREFIXES
 
 # Simple TTL cache for user session data
@@ -117,11 +119,6 @@ app = _BotProxy()
 def is_admin(user_id):
     """Check if a user_id is the bot owner (exists in clients dict)."""
     return user_id in clients
-
-
-def is_admin_user(user_id):
-    """Check if a user_id is an owner. Same as is_admin."""
-    return is_admin(user_id)
 
 
 def cached_get_user_data(user_id):
@@ -418,11 +415,11 @@ def retry(max_retries=3, initial_delay=5, backoff=2, exceptions=(FloodWait, OSEr
                 except exceptions as e:
                     retries += 1
                     wait = e.value if isinstance(e, FloodWait) else delay
-                    print(f"Retry {retries}/{max_retries} for {func.__name__} after {wait}s")
+                    logger.info(f"Retry {retries}/{max_retries} for {func.__name__} after {wait}s")
                     await asyncio.sleep(wait)
                     delay *= backoff
                 except Exception as e:
-                    print(f"Unexpected error in {func.__name__}: {str(e)}")
+                    logger.error(f"Unexpected error in {func.__name__}: {str(e)}")
                     raise
             return await func(*args, **kwargs)
         return wrapper
@@ -433,14 +430,14 @@ def rename_file(old_name, new_name):
     try:
         os.rename(old_name, new_name)
         new_file_path = os.path.abspath(new_name)
-        print(f'File renamed from {old_name} to {new_name}')
+        logger.info(f'File renamed from {old_name} to {new_name}')
         return new_file_path
     except FileNotFoundError:
-        print(f'The file {old_name} does not exist.')
+        logger.warning(f'The file {old_name} does not exist.')
     except FileExistsError:
-        print(f'The file {new_name} already exists.')
+        logger.warning(f'The file {new_name} already exists.')
     except Exception as e:
-        print(f'An error occurred: {e}')
+        logger.warning(f'File rename failed: {e}')
 
 def generate_thumbnail(video_path, thumb_path):
     reader = imageio.get_reader(video_path)
@@ -455,7 +452,7 @@ def with_opencv(filename):
     frame_count = video.get(cv2.CAP_PROP_FRAME_COUNT)
     duration = frame_count / fps if fps else 0
     video.release()
-    print(int(duration))
+    logger.debug(f"video duration: {int(duration)}s")
     return int(duration)
 
 # Progress bar timer class
@@ -558,7 +555,7 @@ async def big_file(msg, sender, zip_filename):
         return await bot.edit_message(msg, "No storage available in gofile.io please try again later:")
 
     file_size = os.path.getsize(zip_filename)
-    print(server)
+    logger.debug(f"gofile server: {server}")
 
     await bot.edit_message(msg, 'File size is greater than 2GB\nUploading file to gofile.io server...')
 
@@ -566,7 +563,7 @@ async def big_file(msg, sender, zip_filename):
     try:
         command = ["curl", "-F", f"file=@{zip_filename}", transfer_url]
         start_time = time.time()
-        print(command)
+        logger.debug(f"upload command: {command}")
         output = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, universal_newlines=True)
 
         for line in output.stdout:
@@ -574,13 +571,13 @@ async def big_file(msg, sender, zip_filename):
             line = line.strip()
             if line:
                 output_text = line
-                print(line)
+                logger.debug(line)
 
                 if edit % 5 == 0:
                     parts = line.split()
 
                     if len(parts) > 10:
-                        print(parts[1])
+                        logger.debug(parts[1])
                         total_size = parts[1]
                         total = re.sub("[^0-9]", "", total_size)
                         current_size = parts[5]
@@ -612,7 +609,7 @@ async def big_file(msg, sender, zip_filename):
                                     if random.choices([True, False], weights=[1, 99])[0]:
                                         await bot.edit_message(msg, message_text, parse_mode='html')
                                 except Exception as e:
-                                    print(e)
+                                    logger.warning(f"progress edit failed: {e}")
 
                 edit += 1
 
@@ -624,9 +621,9 @@ async def big_file(msg, sender, zip_filename):
         try:
             await bot.send_message(sender, f"Not able to upload files more than 500MB here\n So I provided this download link:", buttons=Button.url("Download File", link))
         except Exception as e:
-            print(f"Error sending link: {link}, Error: {e}")
+            logger.warning(f"Error sending link: {link}, Error: {e}")
     except subprocess.CalledProcessError as e:
-        print(e)
+        logger.error(f"gofile upload failed: {e}")
 
 
 def get_arg(message: Message):

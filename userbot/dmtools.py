@@ -5,7 +5,7 @@ from pyrogram.types import Message
 from pyrogram.errors import FloodWait
 from tools import (
     HARDCODED_PREFIXES, edit_or_reply, sudoers_filter, retry,
-    is_admin_user, get_args_from_caret
+    is_admin, get_args_from_caret
 )
 from utils.message import Msg
 
@@ -52,7 +52,7 @@ async def _dm_blast(client, message, *, verb, emoji, needs_text, make_provider, 
                 await edit_or_reply(message, "Provide a message to spam")
                 return
 
-        if is_admin_user(target_user.id):
+        if is_admin(target_user.id):
             return await edit_or_reply(message, f"Cannot DM {verb} the owner")
 
         status = await edit_or_reply(message, f"{emoji} DM {verb}ing {target_user.mention}...")

@@ -6,6 +6,9 @@ import asyncio
 from config import *
 from tools import *
 
+import logging
+logger = logging.getLogger("wordchain")
+
 used_words = {}
 
 def find_random_words(filename, start_letter, word_length, include_letter=None):
@@ -13,7 +16,7 @@ def find_random_words(filename, start_letter, word_length, include_letter=None):
         with open(filename, 'r') as file:
             words = file.read().splitlines()  # Read words from the file
     except FileNotFoundError:
-        print(f"Error: The file '{filename}' was not found.")
+        logger.warning(f"Word file not found: {filename}")
         return []
 
     # Filtering words based on criteria
@@ -87,7 +90,7 @@ async def wordchain_listener(client, message):
 
                     user_data = user_sessions.find_one({"user_id": client.me.id})
                     if user_data and not user_data.get('game', True):
-                        print("game is off, returning.")
+                        logger.debug("wordchain: game is off, returning.")
                         return
 
                     await asyncio.sleep(4)
@@ -107,9 +110,11 @@ async def wordchain_listener(client, message):
                                 if f"is not" in response.text.lower() or f"has been used." in response.text.lower():
                                    break
                                 elif f"is accepted." in response.text.lower():
-                                   return print("worked1")
+                                   logger.debug("wordchain: word accepted")
+                                   return
                     except Exception as e:
-                       return print(e)
+                       logger.debug(f"wordchain: response wait failed: {e}")
+                       return
 
         except Exception as e:
            await bot.send_message(client.me.id,f"ERROR: {e}")

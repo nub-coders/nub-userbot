@@ -413,7 +413,7 @@ async def duck_command_handler(client, message):
             return
 
         # Admin check
-        if hasattr(user, 'id') and is_admin_user(user.id):
+        if hasattr(user, 'id') and is_admin(user.id):
             return await USERBOT.edit_text(
                 "You are fucking requesting me to create fake quote of my lord and my creator.\nSo I won't...**Fuck off!!**"
             )

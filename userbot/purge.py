@@ -1,10 +1,13 @@
 
 import asyncio
+import logging
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.errors import FloodWait
 from config import *
 from tools import *
+
+logger = logging.getLogger("purge")
 
 @Client.on_message(filters.command("purge", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
@@ -30,8 +33,8 @@ async def purge(client, message):
 async def delete_all_messages(client: Client, message: Message):
     try:
         await message.delete()
-    except:
-        pass
+    except Exception as e:
+        logger.debug(f"delall: deleting command message failed: {e}")
     target_user = message.reply_to_message.from_user
     if not target_user:
         return

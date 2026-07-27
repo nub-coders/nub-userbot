@@ -5,6 +5,7 @@ import logging
 from pyrogram import Client, idle
 from convopyro import Conversation
 from config import *
+from plugin_loader import load_extra_plugins
 
 logging.basicConfig(
     level=logging.INFO,
@@ -74,6 +75,11 @@ async def main():
         user_data = user_sessions.find_one({"user_id": userbot.me.id})
         if user_data and "sudoers" in user_data:
             SUDO[userbot.me.id] = user_data["sudoers"]
+
+        # Load external community plugins (no repo fork needed)
+        loaded_extra_plugins.extend(load_extra_plugins(userbot, EXTRA_PLUGINS_DIR))
+        if loaded_extra_plugins:
+            print(f"Loaded {len(loaded_extra_plugins)} extra plugin(s): {', '.join(loaded_extra_plugins)}")
 
     except Exception as e:
         print(f"Error starting clients: {e}")

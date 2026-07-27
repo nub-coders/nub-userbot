@@ -100,3 +100,9 @@ BOT_TOKEN = os.getenv('BOT_TOKEN', '')
 SESSION_STR = os.getenv('SESSION_STR', '')
 
 apps= {}
+
+# External community plugins (Phase 5): drop *.py files in EXTRA_PLUGINS_DIR and
+# they load at startup. loaded_extra_plugins is populated by main.py and read by
+# the .plugins command.
+EXTRA_PLUGINS_DIR = os.getenv('EXTRA_PLUGINS_DIR', os.path.join(os.getcwd(), 'plugins'))
+loaded_extra_plugins = []

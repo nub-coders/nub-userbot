@@ -5,7 +5,26 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from pyrogram.errors import FloodWait
 
-from tools import _SessionCache, retry
+from tools import _SessionCache, retry, delete_if_self
+
+
+class _FakeMsg:
+    def __init__(self, is_self):
+        self.from_user = type("U", (), {"is_self": is_self})()
+        self.deleted = False
+
+    async def delete(self):
+        self.deleted = True
+
+
+@pytest.mark.asyncio
+async def test_delete_if_self_only_deletes_own_message():
+    own = _FakeMsg(is_self=True)
+    other = _FakeMsg(is_self=False)
+    await delete_if_self(own)
+    await delete_if_self(other)
+    assert own.deleted is True
+    assert other.deleted is False
 
 
 def test_session_cache_hit_and_miss():

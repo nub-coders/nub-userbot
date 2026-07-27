@@ -4,6 +4,7 @@
 import requests
 import re
 import os
+import contextlib
 import sys
 import time
 import random
@@ -498,6 +499,19 @@ def set_gvar(user_id, key, value):
         upsert=True
     )
     invalidate_session_cache(user_id)
+
+
+def unset_user_data(user_id, key):
+    """Remove a single key from a user's session document."""
+    user_sessions.update_one({"user_id": user_id}, {"$unset": {key: ""}}, upsert=True)
+    invalidate_session_cache(user_id)
+
+
+async def delete_if_self(message):
+    """Delete the message only if it was sent by the account itself."""
+    if message.from_user and message.from_user.is_self:
+        with contextlib.suppress(Exception):
+            await message.delete()
 
 # Message formatting utilities
 async def format_welcome_message(client, text, chat_id, user_or_chat_name):

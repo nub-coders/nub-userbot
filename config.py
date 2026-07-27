@@ -26,94 +26,40 @@ YT_DLP_BASE_URL = os.getenv('YT_DLP_BASE_URL', 'http://api.nubcoders.com')
 MONGO_URI = os.getenv('MONGO_URI', '')
 DB_NAME = os.getenv('DB_NAME', 'userbot')
 
-import copy
+from storage import MemoryCollection, SqliteCollection
 
-class _MemoryResult:
-    """Mimics pymongo UpdateResult / InsertOneResult."""
-    def __init__(self, matched=0, modified=0, inserted_id=None):
-        self.matched_count = matched
-        self.modified_count = modified
-        self.inserted_id = inserted_id
+# Backend selection: STORAGE_BACKEND=mongo|sqlite|memory. When unset, keep the
+# original behavior — mongo if MONGO_URI is set, else memory.
+STORAGE_BACKEND = os.getenv('STORAGE_BACKEND', '').strip().lower()
+SQLITE_PATH = os.getenv('SQLITE_PATH', os.path.join(os.getcwd(), 'data', 'sessions.db'))
 
-class _MemoryCollection:
-    """In-memory MongoDB-compatible collection. Works while the bot runs, lost on restart."""
-    def __init__(self):
-        self._docs = {}
 
-    def _key(self, filt):
-        return filt.get("user_id")
+def _init_storage():
+    backend = STORAGE_BACKEND or ('mongo' if MONGO_URI else 'memory')
+    if backend == 'mongo':
+        try:
+            client = pymongo.MongoClient(
+                MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=5000
+            )
+            # Force an actual connection so a bad URI/unreachable host fails fast here
+            client.admin.command("ping")
+            logger.info("Connected to MongoDB (database: %s)", DB_NAME)
+            return client, client[DB_NAME]["user_sessions"]
+        except Exception as e:
+            logger.warning(
+                "MongoDB connection failed (%s); falling back to in-memory storage. "
+                "Data will not persist across restarts.", e
+            )
+            return None, MemoryCollection()
+    if backend == 'sqlite':
+        logger.info("Using SQLite storage at %s", SQLITE_PATH)
+        return None, SqliteCollection(SQLITE_PATH)
+    logger.info("Using in-memory storage. Data will not persist across restarts.")
+    return None, MemoryCollection()
 
-    def find_one(self, filt=None, *a, **kw):
-        if not filt:
-            return None
-        doc = self._docs.get(self._key(filt))
-        return copy.deepcopy(doc) if doc else None
 
-    def insert_one(self, doc, *a, **kw):
-        key = doc.get("user_id")
-        self._docs[key] = copy.deepcopy(doc)
-        return _MemoryResult(inserted_id=key)
-
-    def update_one(self, filt, update, *a, upsert=False, **kw):
-        key = self._key(filt)
-        doc = self._docs.get(key)
-        if doc is None:
-            if not upsert:
-                return _MemoryResult()
-            doc = dict(filt)
-            self._docs[key] = doc
-        for op, fields in update.items():
-            if op == "$set":
-                doc.update(fields)
-            elif op == "$unset":
-                for f in fields:
-                    doc.pop(f, None)
-            elif op == "$push":
-                for f, v in fields.items():
-                    doc.setdefault(f, []).append(v)
-            elif op == "$pull":
-                for f, v in fields.items():
-                    lst = doc.get(f, [])
-                    if v in lst:
-                        lst.remove(v)
-            elif op == "$addToSet":
-                for f, v in fields.items():
-                    lst = doc.setdefault(f, [])
-                    if v not in lst:
-                        lst.append(v)
-            elif op == "$inc":
-                for f, v in fields.items():
-                    doc[f] = doc.get(f, 0) + v
-        return _MemoryResult(matched=1, modified=1)
-
-    def find(self, filt=None, *a, **kw):
-        if not filt:
-            return list(self._docs.values())
-        return [d for d in self._docs.values() if all(d.get(k) == v for k, v in filt.items())]
-
-if MONGO_URI:
-    try:
-        mongo_client = pymongo.MongoClient(
-            MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=5000
-        )
-        # Force an actual connection so a bad URI/unreachable host fails fast here
-        mongo_client.admin.command("ping")
-        db = mongo_client[DB_NAME]
-        user_sessions = db["user_sessions"]
-        logger.info("Connected to MongoDB (database: %s)", DB_NAME)
-    except Exception as e:
-        logger.warning(
-            "MongoDB connection failed (%s); falling back to in-memory storage. "
-            "Data will not persist across restarts.", e
-        )
-        mongo_client = None
-        db = None
-        user_sessions = _MemoryCollection()
-else:
-    logger.info("No MONGO_URI set; using in-memory storage. Data will not persist across restarts.")
-    mongo_client = None
-    db = None
-    user_sessions = _MemoryCollection()
+mongo_client, user_sessions = _init_storage()
+db = mongo_client[DB_NAME] if mongo_client else None
 
 # Command prefixes recognized by the userbot
 HARDCODED_PREFIXES = ["!", ".", "?", "^", "_"]

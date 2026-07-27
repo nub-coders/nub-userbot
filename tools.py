@@ -619,7 +619,7 @@ async def big_file(msg, sender, zip_filename):
         link = text[start_index:end_index]
 
         try:
-            await bot.send_message(sender, f"Not able to upload files more than 500MB here\n So I provided this download link:", buttons=Button.url("Download File", link))
+            await bot.send_message(sender, f"Not able to upload files more than 500MB here.\nDownload link: {link}")
         except Exception as e:
             logger.warning(f"Error sending link: {link}, Error: {e}")
     except subprocess.CalledProcessError as e:

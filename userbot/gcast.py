@@ -7,6 +7,9 @@ from pyrogram import enums
 from config import *
 from tools import *
 
+import logging
+logger = logging.getLogger("gcast")
+
 @Client.on_message(filters.command("gcast", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def gcast_handler(client, message):
@@ -23,7 +26,7 @@ async def gcast_handler(client, message):
     try:
         parts = message.text.split(maxsplit=2)
         flag = parts[1].lower()
-        print(flag)
+        logger.debug(f"gcast flag: {flag}")
         text_or_file = parts[2] if len(parts) > 2 else None  #handles cases with no message
         file = None
         reply_msg = message.reply_to_message

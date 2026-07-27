@@ -8,6 +8,9 @@ from convopyro import Conversation, listen_message
 from config import *
 from tools import *
 
+import logging
+logger = logging.getLogger("forward")
+
 current_dir = os.getcwd()
 
 # Pyrogram client setup
@@ -72,7 +75,7 @@ async def forward_message_handler(client, message):
                               if random.choices([True, False], weights=[1, 99])[0]:
                                 await bot.edit_message(msg,message_text)
                            except Exception as e:
-                              print(e)
+                              logger.warning(f"forward progress edit failed: {e}")
                         msg = await bot.send_message(sender, "Downloading media/document......")
                         type_of="Downloading"
                         file_path=await message.download(f"{user_dir}/" ,progress=progress_bar)

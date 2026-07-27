@@ -12,6 +12,9 @@ from pyrogram.raw.types import InputPeerChannel, InputPeerChat
 from config import *
 from tools import *
 
+import logging
+logger = logging.getLogger("group_tools")
+
 # ponytail: inline the one helper we used from the (nonexistent) `parser` module
 def mention_markdown(user_id, name):
     return f"[{name}](tg://user?id={user_id})"
@@ -183,7 +186,7 @@ async def invite_to_voice_chat(client, message):
             )
             z += 6
         except Exception as e:
-            print(f"Error: {str(e)}")
+            logger.warning(f"Group call invite chunk failed: {e}")
 
         await asyncio.sleep(10)  # Wait for 10 seconds before inviting the next chunk
 
@@ -212,7 +215,7 @@ async def adminlist(client, message):
     async for a in client.get_chat_members(chat, filter=enums.ChatMembersFilter.ADMINISTRATORS):
         try:
             nama = a.user.first_name + " " + a.user.last_name
-        except:
+        except (TypeError, AttributeError):
             nama = a.user.first_name
 
         if nama is None:

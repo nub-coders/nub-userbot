@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 # API Configuration
 API_TOKEN = getattr(sys.modules.get('config'), 'YT_DLP_API_KEY', os.getenv('YT_DLP_API_KEY', ''))
-BASE_URL = getattr(sys.modules.get('config'), 'YT_DLP_BASE_URL', os.getenv('YT_DLP_BASE_URL', 'http://api.nubcoders.com'))
+BASE_URL = getattr(sys.modules.get('config'), 'YT_DLP_BASE_URL', os.getenv('YT_DLP_BASE_URL', 'https://api.nubcoders.com'))
 
 def get_video_info(url_or_query: str, max_results: int = 1) -> Tuple[str, str, int, str, str, int, str, str, str]:
     """Get video info - returns (title, video_id, duration, youtube_link, channel_name, views, stream_url, thumbnail, time_taken)"""
@@ -19,7 +19,8 @@ def get_video_info(url_or_query: str, max_results: int = 1) -> Tuple[str, str, i
         logger.debug(f"Making API request to {BASE_URL}/info with max_results={max_results}")
         response = requests.get(
             f'{BASE_URL}/info',
-            params={'token': API_TOKEN, 'q': url_or_query, 'max_results': max_results},
+            params={'q': url_or_query, 'max_results': max_results},
+            headers={'Authorization': f'Bearer {API_TOKEN}'},
             timeout=30
         )
         response.raise_for_status()

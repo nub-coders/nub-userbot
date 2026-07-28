@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from pyrogram.errors import FloodWait
 
-from tools import _SessionCache, retry, delete_if_self
+from tools import _SessionCache, retry, delete_if_self, parse_help_entry
 
 
 class _FakeMsg:
@@ -88,3 +88,37 @@ async def test_retry_reraises_unexpected_exception_immediately():
 
     # ValueError isn't in the retry set, so it should fire exactly once.
     assert calls["n"] == 1
+
+
+def test_parse_help_entry():
+    raw = "**Play Audio** - Play audio in voice chat.\n\n**Usage:** `[prefix]play <query>`\n**Example:** `[prefix]play music`"
+    desc, usage, example, note, warning, flags = parse_help_entry(raw)
+    assert desc == "Play audio in voice chat."
+    assert usage == "`[prefix]play <query>`"
+    assert example == "`[prefix]play music`"
+
+
+def test_commands_and_categories_registries():
+    from tools import commands, categories
+    assert len(commands) > 0
+    assert len(categories) > 0
+    assert "ℹ️ INFO" in categories
+    assert "play" in commands
+
+
+def test_commands_keyboard():
+    from bot.botcmds import _commands_keyboard
+    from tools import categories
+
+    keyboard = _commands_keyboard()
+    assert keyboard is not None
+    assert len(keyboard.inline_keyboard) > 0
+
+    # Test empty categories fallback
+    old_cats = dict(categories)
+    categories.clear()
+    try:
+        assert _commands_keyboard() is None
+    finally:
+        categories.update(old_cats)
+

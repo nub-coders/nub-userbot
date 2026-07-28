@@ -8,42 +8,6 @@ from utils.message import Msg
 logger = logging.getLogger("userbot.help")
 
 
-def _parse_help_entry(raw_text):
-    """Parse a raw help entry into structured fields."""
-    desc = usage = example = note = warning = flags = ""
-    lines = raw_text.strip().split("\n")
-    for line in lines:
-        line = line.strip()
-        ll = line.lower()
-        if ll.startswith("**usage:**"):
-            usage = line.split("**Usage:**", 1)[-1].strip()
-        elif ll.startswith("**example:**"):
-            example = line.split("**Example:**", 1)[-1].strip()
-        elif ll.startswith("**examples:**"):
-            example = line.split("**Examples:**", 1)[-1].strip()
-        elif ll.startswith("**flags:**"):
-            flags = line.split("**Flags:**", 1)[-1].strip()
-        elif ll.startswith("**note:**"):
-            note = line.split("**Note:**", 1)[-1].strip()
-        elif ll.startswith("**warning:**"):
-            warning = line.split("**Warning:**", 1)[-1].strip()
-        elif ll.startswith("**features:**"):
-            note = line.split("**Features:**", 1)[-1].strip()
-        elif ll.startswith("**options:**"):
-            flags = line.split("**Options:**", 1)[-1].strip()
-        elif ll.startswith("**supported:**"):
-            note = line.split("**Supported:**", 1)[-1].strip()
-        elif " - " in line and not desc:
-            desc = line.split(" - ", 1)[-1].strip()
-    if not desc and lines:
-        first = lines[0].strip().strip("*")
-        if " - " in first:
-            desc = first.split(" - ", 1)[-1].strip()
-        else:
-            desc = first
-    return desc, usage, example, note, warning, flags
-
-
 @Client.on_message(filters.command("help", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 async def help_handler(client, message):
     """Shows detailed command usage — .help <command> or .help for categories overview"""
@@ -71,7 +35,7 @@ async def help_handler(client, message):
 
         if cmd_name in commands:
             raw = commands[cmd_name]
-            desc, usage, example, note, warning, flags = _parse_help_entry(raw)
+            desc, usage, example, note, warning, flags = parse_help_entry(raw)
 
             # Replace [prefix] placeholder with user's actual prefix
             usage = usage.replace("[prefix]", prefix)

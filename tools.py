@@ -230,9 +230,129 @@ def update_message_and_entities(text, entities, words_to_remove=None):
     return text, entities
 
 
+def parse_help_entry(raw_text):
+    """Parse a raw help entry into structured fields."""
+    desc = usage = example = note = warning = flags = ""
+    lines = raw_text.strip().split("\n")
+    for line in lines:
+        line = line.strip()
+        ll = line.lower()
+        if ll.startswith("**usage:**"):
+            usage = line.split("**Usage:**", 1)[-1].strip()
+        elif ll.startswith("**example:**"):
+            example = line.split("**Example:**", 1)[-1].strip()
+        elif ll.startswith("**examples:**"):
+            example = line.split("**Examples:**", 1)[-1].strip()
+        elif ll.startswith("**flags:**"):
+            flags = line.split("**Flags:**", 1)[-1].strip()
+        elif ll.startswith("**note:**"):
+            note = line.split("**Note:**", 1)[-1].strip()
+        elif ll.startswith("**warning:**"):
+            warning = line.split("**Warning:**", 1)[-1].strip()
+        elif ll.startswith("**features:**"):
+            note = line.split("**Features:**", 1)[-1].strip()
+        elif ll.startswith("**options:**"):
+            flags = line.split("**Options:**", 1)[-1].strip()
+        elif ll.startswith("**supported:**"):
+            note = line.split("**Supported:**", 1)[-1].strip()
+        elif " - " in line and not desc:
+            desc = line.split(" - ", 1)[-1].strip()
+    if not desc and lines:
+        first = lines[0].strip().strip("*")
+        if " - " in first:
+            desc = first.split(" - ", 1)[-1].strip()
+        else:
+            desc = first
+    return desc, usage, example, note, warning, flags
+
+
 # Global help registries
-commands = {}
-categories = {}
+DEFAULT_COMMANDS = {
+    'alive': '**Check Online** - Check if userbot is running.\n\n**Usage:** `[prefix]alive`',
+    'ping': '**Ping Response** - Test response time and server stats.\n\n**Usage:** `[prefix]ping`',
+    'stats': '**View Statistics** - Comprehensive userbot and account stats.\n\n**Usage:** `[prefix]stats`',
+    'info': '**User Info** - Get detailed info for a user or chat.\n\n**Usage:** `[prefix]info [user]`',
+    'status': '**User Status** - View detailed system status and settings.\n\n**Usage:** `[prefix]status`',
+    'sessions': '**Active Sessions** - View active Telegram account sessions.\n\n**Usage:** `[prefix]sessions`',
+    'ban': '**Ban User** - Ban user from current chat.\n\n**Usage:** `[prefix]ban [user]`',
+    'unban': '**Unban User** - Unban user in current chat.\n\n**Usage:** `[prefix]unban [user]`',
+    'kick': '**Kick User** - Kick user out of current chat.\n\n**Usage:** `[prefix]kick [user]`',
+    'mute': '**Mute User** - Restrict user from sending messages.\n\n**Usage:** `[prefix]mute [user]`',
+    'unmute': '**Unmute User** - Restore messaging permissions.\n\n**Usage:** `[prefix]unmute [user]`',
+    'pin': '**Pin Message** - Pin replied message.\n\n**Usage:** `[prefix]pin [reply]`',
+    'unpin': '**Unpin Message** - Unpin pinned message.\n\n**Usage:** `[prefix]unpin`',
+    'promote': '**Promote Admin** - Grant admin rights to user.\n\n**Usage:** `[prefix]promote [user]`',
+    'demote': '**Demote Admin** - Revoke admin rights from user.\n\n**Usage:** `[prefix]demote [user]`',
+    'tagall': '**Mention All** - Mention all members in the group.\n\n**Usage:** `[prefix]tagall [text]`',
+    'power': '**Full Power** - Promote user with full admin permissions.\n\n**Usage:** `[prefix]power [user]`',
+    'play': '**Play Audio** - Stream audio in voice chat.\n\n**Usage:** `[prefix]play <query>`',
+    'vplay': '**Play Video** - Stream video in voice chat.\n\n**Usage:** `[prefix]vplay <query>`',
+    'playforce': '**Force Play Audio** - Stream audio immediately.\n\n**Usage:** `[prefix]playforce <query>`',
+    'vplayforce': '**Force Play Video** - Stream video immediately.\n\n**Usage:** `[prefix]vplayforce <query>`',
+    'pause': '**Pause Playback** - Pause active voice chat stream.\n\n**Usage:** `[prefix]pause`',
+    'resume': '**Resume Playback** - Resume paused voice chat stream.\n\n**Usage:** `[prefix]resume`',
+    'skip': '**Skip Track** - Skip current voice chat track.\n\n**Usage:** `[prefix]skip`',
+    'end': '**Stop Playback** - Stop voice chat stream and clear queue.\n\n**Usage:** `[prefix]end`',
+    'loop': '**Loop Track** - Loop current track.\n\n**Usage:** `[prefix]loop <count>`',
+    'queue': '**Show Queue** - Display voice chat queue.\n\n**Usage:** `[prefix]queue`',
+    'vc1': '**Start VC** - Start group voice chat call.\n\n**Usage:** `[prefix]vc1`',
+    'vc0': '**End VC** - End group voice chat call.\n\n**Usage:** `[prefix]vc0`',
+    'chat': '**AI Chat** - General conversation with Gemini AI.\n\n**Usage:** `/chat <text>`',
+    'reason': '**AI Reasoning** - Step-by-step problem solving.\n\n**Usage:** `/reason <text>`',
+    'code': '**AI Code** - Generate or fix code snippets.\n\n**Usage:** `/code <request>`',
+    'summarize': '**AI Summarize** - Summarize text or message.\n\n**Usage:** `/summarize <text>`',
+    'translate': '**AI Translate** - Translate text to target language.\n\n**Usage:** `/translate <text>`',
+    'write': '**AI Write** - Generate written articles or posts.\n\n**Usage:** `/write <topic>`',
+    'analysis': '**AI Analysis** - In-depth text analysis.\n\n**Usage:** `/analysis <text>`',
+    'gemini_help': '**AI Help** - List all Gemini AI commands.\n\n**Usage:** `/gemini_help`',
+    'qt': '**Quote Sticker** - Create quote sticker from message.\n\n**Usage:** `[prefix]qt [reply]`',
+    'kang': '**Add Sticker** - Add sticker or photo to custom pack.\n\n**Usage:** `[prefix]kang [reply]`',
+    'tiny': '**Tiny Sticker** - Shrink sticker or photo.\n\n**Usage:** `[prefix]tiny [reply]`',
+    'mmf': '**Meme Maker** - Add top/bottom text to photo.\n\n**Usage:** `[prefix]mmf <top> ; <bottom>`',
+    'ocr': '**Extract Text** - Perform OCR on image.\n\n**Usage:** `[prefix]ocr [reply]`',
+    'purge': '**Purge Messages** - Delete message range.\n\n**Usage:** `[prefix]purge [reply]`',
+    'del': '**Delete Message** - Delete replied message.\n\n**Usage:** `[prefix]del [reply]`',
+    'frwd': '**Raw Forward** - Forward message without forward header.\n\n**Usage:** `[prefix]frwd [reply]`',
+    'block': '**Block User** - Block user in private chat.\n\n**Usage:** `[prefix]block [user]`',
+    'unblock': '**Unblock User** - Unblock user.\n\n**Usage:** `[prefix]unblock [user]`',
+    'clone': '**Clone Profile** - Copy user profile details.\n\n**Usage:** `[prefix]clone [user]`',
+    'revert': '**Revert Profile** - Restore original profile.\n\n**Usage:** `[prefix]revert`',
+    'afk': '**AFK Status** - Set away-from-keyboard state.\n\n**Usage:** `[prefix]afk [reason]`',
+    'calc': '**Calculator** - Calculate mathematical expression.\n\n**Usage:** `[prefix]calc <expr>`',
+    'speedtest': '**Speedtest** - Test server speed.\n\n**Usage:** `[prefix]speedtest`',
+    'addsudo': '**Add Sudo** - Grant sudo user access.\n\n**Usage:** `[prefix]addsudo [user]`',
+    'delsudo': '**Remove Sudo** - Revoke sudo access.\n\n**Usage:** `[prefix]delsudo [user]`',
+    'sudolist': '**Sudo List** - List authorized sudo users.\n\n**Usage:** `[prefix]sudolist`',
+    'spam': '**Spam Text** - Send repeated text messages.\n\n**Usage:** `[prefix]spam <count> <text>`',
+    'schedule': '**Schedule Msg** - Schedule message delivery.\n\n**Usage:** `[prefix]schedule <target> <time> <text>`',
+    'react': '**Auto React** - Toggle auto reaction on messages.\n\n**Usage:** `[prefix]react`',
+    'gcast': '**Broadcast** - Broadcast message to chats.\n\n**Usage:** `[prefix]gcast <text>`',
+    'game': '**Game Toggle** - Toggle word chain autoplay.\n\n**Usage:** `[prefix]game`',
+    'solver': '**Game Solver** - Solve word search puzzles.\n\n**Usage:** `[prefix]solver`',
+    'wc': '**Word Chain** - Play word chain game.\n\n**Usage:** `[prefix]wc [word]`',
+    'font': '**Apply Font** - Apply custom font style.\n\n**Usage:** `[prefix]font <style> <text>`',
+    'fonts': '**Font List** - List available font styles.\n\n**Usage:** `[prefix]fonts`',
+    'eval': '**Execute Code** - Evaluate Python expression.\n\n**Usage:** `[prefix]eval <code>`',
+    'sh': '**Run Shell** - Execute bash command.\n\n**Usage:** `[prefix]sh <cmd>`',
+    'plugins': '**List Plugins** - View loaded extra plugins.\n\n**Usage:** `[prefix]plugins`',
+    'update': '**Update Bot** - Update code from git.\n\n**Usage:** `[prefix]update`',
+}
+
+DEFAULT_CATEGORIES = {
+    'ℹ️ INFO': ['alive', 'ping', 'stats', 'info', 'status', 'sessions'],
+    '🛡️ ADMIN': ['ban', 'unban', 'kick', 'mute', 'unmute', 'pin', 'unpin', 'promote', 'demote', 'tagall', 'power'],
+    '🎵 MUSIC': ['play', 'vplay', 'playforce', 'vplayforce', 'pause', 'resume', 'skip', 'end', 'loop', 'queue', 'vc1', 'vc0'],
+    '🤖 AI': ['chat', 'reason', 'code', 'summarize', 'translate', 'write', 'analysis', 'gemini_help'],
+    '🖼️ MEDIA': ['qt', 'kang', 'tiny', 'mmf', 'ocr'],
+    '💬 CHAT': ['purge', 'del', 'frwd', 'block', 'unblock'],
+    '⚙️ UTILITY': ['clone', 'revert', 'afk', 'calc', 'speedtest', 'addsudo', 'delsudo', 'sudolist'],
+    '⚡ AUTOMATION': ['spam', 'schedule', 'react', 'gcast'],
+    '🎮 GAMES': ['game', 'solver', 'wc'],
+    '💻 DEVELOPER': ['font', 'fonts', 'eval', 'sh', 'plugins', 'update'],
+}
+
+commands = dict(DEFAULT_COMMANDS)
+categories = dict(DEFAULT_CATEGORIES)
 games = {}
 
 def get_user(message, text) -> [int, str, None]:

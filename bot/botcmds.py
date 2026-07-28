@@ -144,12 +144,12 @@ def _commands_keyboard():
     keyboard_rows, row = [], []
     for category in categories.keys():
         row.append(InlineKeyboardButton(str(category), callback_data=f'category_{category}', style=ButtonStyle.PRIMARY))
-        if len(row) == 3:
+        if len(row) == 2:
             keyboard_rows.append(row)
             row = []
     if row:
         keyboard_rows.append(row)
-    return InlineKeyboardMarkup(keyboard_rows)
+    return InlineKeyboardMarkup(keyboard_rows) if keyboard_rows else None
 
 
 # ─────────────────────────── /start ────────────────────────────────────────
@@ -200,9 +200,16 @@ async def ping_command(client, message: Message):
 # ─────────────────────────── /commands ─────────────────────────────────────
 @Client.on_message(filters.command("commands") & filters.private)
 async def commands_handler(client, message: Message):
+    markup = _commands_keyboard()
+    if markup is None:
+        await message.reply(
+            f"{Msg.EMOJI_PIN} <b>No categories available.</b>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
     await message.reply(
         f"{Msg.EMOJI_PIN} <b>Please choose a category to see its commands:</b>",
-        reply_markup=_commands_keyboard(),
+        reply_markup=markup,
         parse_mode=ParseMode.HTML,
     )
 
@@ -214,10 +221,14 @@ async def category_handler(client, callback_query: CallbackQuery):
 
     category_commands = categories.get(category, [])
     if category_commands:
-        category_description = "\n\n".join(
-            f"<b>{cmd}</b> - {commands.get(cmd, 'Description not available')}"
-            for cmd in category_commands
-        )
+        items = []
+        for cmd in category_commands:
+            raw = commands.get(cmd, 'Description not available')
+            desc, usage, example, note, warning, flags = parse_help_entry(raw)
+            clean_cmd = str(cmd).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            clean_desc = str(desc).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            items.append(f"<b>{clean_cmd}</b> - {clean_desc}")
+        category_description = "\n\n".join(items)
     else:
         category_description = "<i>No commands in this category yet.</i>"
 
@@ -233,9 +244,16 @@ async def category_handler(client, callback_query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(r'^back$'))
 async def back_handler(client, callback_query: CallbackQuery):
+    markup = _commands_keyboard()
+    if markup is None:
+        await callback_query.edit_message_text(
+            f"{Msg.EMOJI_PIN} <b>No categories available.</b>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
     await callback_query.edit_message_text(
         f"{Msg.EMOJI_PIN} <b>Please choose a category to see its commands:</b>",
-        reply_markup=_commands_keyboard(),
+        reply_markup=markup,
         parse_mode=ParseMode.HTML,
     )
 

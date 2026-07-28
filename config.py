@@ -3,12 +3,16 @@ import time
 import logging
 import pymongo
 import certifi
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 # Telegram API credentials
 # Required: Get these from https://my.telegram.org
-API_ID = int(os.getenv('API_ID', 0))
+raw_api_id = os.getenv('API_ID', '').strip()
+API_ID = int(raw_api_id) if raw_api_id.isdigit() else 0
 API_HASH = os.getenv('API_HASH', '')
 
 # Gemini API configuration

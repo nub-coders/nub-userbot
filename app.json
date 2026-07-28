@@ -46,8 +46,8 @@
       "required": false
     },
     "YT_DLP_BASE_URL": {
-      "description": "Optional: Base URL for YT_DLP API (defaults to http://api.nubcoders.com)",
-      "value": "http://api.nubcoders.com",
+      "description": "Optional: Base URL for YT_DLP API (defaults to https://api.nubcoders.com)",
+      "value": "https://api.nubcoders.com",
       "required": false
     },
     "MONGO_URI": {

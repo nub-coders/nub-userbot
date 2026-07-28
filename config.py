@@ -23,7 +23,7 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 YT_DLP_API_KEY = os.getenv('YT_DLP_API_KEY', '')
 
 # YT_DLP Base URL configuration
-YT_DLP_BASE_URL = os.getenv('YT_DLP_BASE_URL', 'http://api.nubcoders.com')
+YT_DLP_BASE_URL = os.getenv('YT_DLP_BASE_URL', 'https://api.nubcoders.com')
 
 # MongoDB connection (optional)
 # Leave MONGO_URI empty to run fully in-memory (data is lost on restart).

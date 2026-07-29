@@ -404,7 +404,7 @@ async def duck_command_handler(client, message):
     try:
         sender = message.from_user.id if message.from_user else message.chat.id
         replied_message = message.reply_to_message
-        user = replied_message.from_user or replied_message.sender_chat
+        user = replied_message.from_user or replied_message.sender_chat or replied_message.chat
 
         if not user:
             await USERBOT.edit_text(Msg.ERR_GET_USER_INFO_FAILED)
@@ -515,6 +515,9 @@ async def duck_command_handler(client, message):
         if include_reply and parent_reply_message:
             reply_info = await build_reply_info(client, parent_reply_message)
         
+        # Collect forward information if the message was forwarded
+        forward_info = await build_forward_info(client, replied_message)
+        
         # Step 2: Validate all collected information
         if not user_info or "id" not in user_info:
             await USERBOT.edit_text(Msg.ERR_GET_USER_INFO_FAILED)
@@ -539,6 +542,10 @@ async def duck_command_handler(client, message):
         # Add reply if available
         if reply_info:
             message_obj["replyMessage"] = reply_info
+        
+        # Add forward if available
+        if forward_info:
+            message_obj["forward"] = forward_info
         
         # Create the final payload
         quote_payload = {
@@ -662,39 +669,57 @@ async def build_user_info(client, user) -> Optional[Dict[str, Any]]:
             if first_name and last_name:
                 user_info["first_name"] = first_name
                 user_info["last_name"] = last_name
+                user_info["name"] = f"{first_name} {last_name}".strip()
             elif first_name:
                 user_info["first_name"] = first_name
+                user_info["name"] = first_name
             elif title:
                 user_info["first_name"] = title
                 user_info["name"] = title
+                user_info["title"] = title
             elif username:
                 user_info["username"] = username
                 user_info["name"] = f"@{username}"
             else:
                 user_info["name"] = "Unknown User"
+
+            if username:
+                user_info["username"] = username
         except Exception as e:
             logger.warning(f"Error processing username info: {e}")
             user_info["name"] = "Unknown User"
         
-        # Handle profile photo
+        # Handle profile photo (supports both User and Chat objects)
         try:
+            photo_path = None
+            session_name = f'user_{client.me.id}'
+            user_dir = session_name
+            os.makedirs(user_dir, exist_ok=True)
+
             if hasattr(user, 'photo') and user.photo:
                 file_id = None
                 if hasattr(user.photo, 'big_file_id') and user.photo.big_file_id:
                     file_id = user.photo.big_file_id
                 elif hasattr(user.photo, 'small_file_id') and user.photo.small_file_id:
                     file_id = user.photo.small_file_id
-                
+
                 if file_id:
-                    session_name = f'user_{client.me.id}'
-                    user_dir = session_name
-                    os.makedirs(user_dir, exist_ok=True)
-                    photo_path = await client.download_media(file_id, file_name=f"{user_dir}/")
-                    if photo_path and os.path.exists(photo_path):
-                        with open(photo_path, "rb") as f:
-                            base64_img = base64.b64encode(f.read()).decode('utf-8')
-                        user_info["photo"] = {"base64": base64_img}
-                        os.remove(photo_path)
+                    try:
+                        photo_path = await client.download_media(file_id, file_name=f"{user_dir}/")
+                    except Exception as e:
+                        logger.debug(f"Failed to download photo via file_id: {e}")
+
+            if not photo_path:
+                try:
+                    photo_path = await client.download_media(user, file_name=f"{user_dir}/")
+                except Exception as e:
+                    logger.debug(f"Failed to download photo via user/chat object: {e}")
+
+            if photo_path and os.path.exists(photo_path):
+                with open(photo_path, "rb") as f:
+                    base64_img = base64.b64encode(f.read()).decode('utf-8')
+                user_info["photo"] = {"base64": base64_img}
+                os.remove(photo_path)
         except Exception as e:
             logger.warning(f"Error getting user photo: {e}")
         
@@ -710,6 +735,34 @@ async def build_user_info(client, user) -> Optional[Dict[str, Any]]:
         
     except Exception as e:
         logger.error(f"Critical error in build_user_info: {e}")
+        return None
+
+
+async def build_forward_info(client, message) -> Optional[Dict[str, Any]]:
+    """Extract forward information for quote API payload if message is forwarded"""
+    try:
+        if not message:
+            return None
+
+        forward_target = getattr(message, "forward_from_chat", None) or getattr(message, "forward_from", None)
+        if forward_target:
+            forward_info = await build_user_info(client, forward_target)
+            if forward_info:
+                sig = getattr(message, "forward_signature", None) or getattr(message, "author_signature", None)
+                if sig and "name" in forward_info:
+                    forward_info["name"] = f"{forward_info['name']} ({sig})"
+                return forward_info
+
+        sender_name = getattr(message, "forward_sender_name", None)
+        if sender_name:
+            return {
+                "name": sender_name,
+                "first_name": sender_name
+            }
+
+        return None
+    except Exception as e:
+        logger.warning(f"Error building forward info: {e}")
         return None
 
 
@@ -933,11 +986,10 @@ async def build_reply_info(client, reply_message) -> Optional[Dict[str, Any]]:
             logger.debug("No reply message provided")
             return None
             
-        if not hasattr(reply_message, 'from_user') or not reply_message.from_user:
-            logger.debug("Reply message has no from_user")
+        reply_user = getattr(reply_message, 'from_user', None) or getattr(reply_message, 'sender_chat', None) or getattr(reply_message, 'chat', None)
+        if not reply_user:
+            logger.debug("Reply message has no user or chat sender")
             return None
-
-        reply_user = reply_message.from_user
         
         # Get reply text content (do not inject literal "Media" for media-only messages)
         reply_text = ""

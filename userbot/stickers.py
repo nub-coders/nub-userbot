@@ -491,30 +491,24 @@ async def duck_command_handler(client, message):
         
         # Collect media information (only if not using custom text with -f flag)
         media_info = None
-        parent_reply_message = replied_message.reply_to_message
-        if not parent_reply_message and getattr(replied_message, "reply_to_message_id", None):
-            try:
-                parent_reply_message = await client.get_messages(
-                    replied_message.chat.id,
-                    replied_message.reply_to_message_id,
-                )
-            except Exception as e:
-                logger.warning(f"Failed to fetch parent reply message: {e}")
-
         if not (force_custom and command_text):
             media_info = await get_media_info(client, replied_message)
-            # Fallback: if the replied message is text-only but is replying to media,
-            # include that parent media in the generated quote.
-            # For .qt -r, do NOT copy parent media into the main message,
-            # otherwise main and reply become duplicate media blocks.
-            if not media_info and parent_reply_message and not include_reply:
-                media_info = await get_media_info(client, parent_reply_message)
-        
-        # Collect reply information (only if -r flag is present and reply exists)
+
+        # Collect reply information — nothing from the parent message unless -r is given
         reply_info = None
-        if include_reply and parent_reply_message:
-            reply_info = await build_reply_info(client, parent_reply_message)
-        
+        if include_reply:
+            parent_reply_message = replied_message.reply_to_message
+            if not parent_reply_message and getattr(replied_message, "reply_to_message_id", None):
+                try:
+                    parent_reply_message = await client.get_messages(
+                        replied_message.chat.id,
+                        replied_message.reply_to_message_id,
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to fetch parent reply message: {e}")
+            if parent_reply_message:
+                reply_info = await build_reply_info(client, parent_reply_message)
+
         # Collect forward information if the message was forwarded
         forward_info = await build_forward_info(client, replied_message)
         

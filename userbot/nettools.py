@@ -1,6 +1,7 @@
 import ast
 import asyncio
 import math
+import re
 import time
 import logging
 import aiohttp
@@ -143,6 +144,14 @@ async def calculator(client: Client, message: Message):
         expression = expression.replace('^', '**')
         expression = expression.replace('×', '*')
         expression = expression.replace('÷', '/')
+        
+        # Handle percentage calculations (e.g., "38% 2985", "38% of 2985", "2985 - 38%", "50%")
+        # 1. "X% of Y" or "X% Y" or "X% (Y)" -> ((X / 100) * Y)
+        expression = re.sub(r'(\d+(?:\.\d+)?)\%\s*(?:of\s+)?(\d+(?:\.\d+)?|\()', r'((\1 / 100) * \2)', expression)
+        # 2. "base + P%" or "base - P%" -> base +/- (base * P / 100)
+        expression = re.sub(r'(\d+(?:\.\d+)?)\s*([\+\-])\s*(\d+(?:\.\d+)?)\%(?!\s*[\d\(])', r'\1 \2 (\1 * \3 / 100)', expression)
+        # 3. Standalone "X%" -> (X / 100)
+        expression = re.sub(r'(\d+(?:\.\d+)?)\%', r'(\1 / 100)', expression)
         
         # Parse the expression as an AST
         parsed = ast.parse(expression, mode='eval')

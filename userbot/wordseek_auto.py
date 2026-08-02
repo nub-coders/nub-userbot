@@ -89,6 +89,28 @@ def init_game_state(chat_id: int, word_length: int = None) -> Dict:
     }
 
 
+def mark_word_used(game: Dict, word: str) -> bool:
+    """Record a word as guessed, normalized to uppercase.
+
+    Both the parsed-feedback path and the duplicate-word path funnel through
+    here so casing can never diverge — the words arrive as UPPER, Title, and
+    lower respectively, and the de-dupe check is case-sensitive.
+    Returns False if the word was already recorded.
+    """
+    if not word:
+        return False
+    normalized = word.upper()
+    if normalized in game['used_words']:
+        return False
+    game['used_words'].append(normalized)
+    return True
+
+
+def is_word_used(game: Dict, word: str) -> bool:
+    """Case-insensitive check against the recorded guesses."""
+    return bool(word) and word.upper() in game['used_words']
+
+
 def get_supported_lengths() -> List[int]:
     """Return the supported WordSeek lengths from the live solver when possible."""
     try:
@@ -253,8 +275,7 @@ async def play_game_loop(client: Client, chat_id: int):
         message_lower = (bot_message.text or "").lower()
         if "someone has already guessed your word" in message_lower:
             logger.info("[LOOP] Duplicate word detected; selecting a new guess")
-            if game.get('last_sent_word') and game['last_sent_word'] not in game['used_words']:
-                game['used_words'].append(game['last_sent_word'])
+            if mark_word_used(game, game.get('last_sent_word')):
                 logger.info(f"[LOOP] Marked as used: {game['last_sent_word']}")
         else:
             # Parse feedback from bot message
@@ -269,7 +290,7 @@ async def play_game_loop(client: Client, chat_id: int):
             # Process all words found in the message
             for word, word_feedback in feedback.items():
                 # Skip if already processed
-                if word in game['used_words']:
+                if is_word_used(game, word):
                     logger.debug(f"[LOOP] Word {word} already processed, skipping")
                     continue
                 
@@ -278,9 +299,9 @@ async def play_game_loop(client: Client, chat_id: int):
                 if len(word_feedback) not in supported or len(word_feedback) != len(word):
                     logger.warning(f"[LOOP] Invalid feedback length or mismatch for {word}: {word_feedback}")
                     continue
-            
-                # Store word and pattern
-                game['used_words'].append(word)
+
+                # Store word and pattern (normalize to uppercase for consistent de-dupe)
+                mark_word_used(game, word)
                 game['patterns'][word] = word_feedback
             
                 logger.info(f"[LOOP] Feedback: {word} → {word_feedback}")

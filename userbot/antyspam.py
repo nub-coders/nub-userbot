@@ -120,19 +120,19 @@ async def handle_user(client, message):
 message.chat.id, message.from_user.first_name)
             )
 
-        elif block_count > 0 and (block_count <= delete_count or delete_count ==0):
-            if block_count == user_count:
+        elif block_count > 0 and user_count >= block_count:
+            if user_count == block_count:
                warning_message = bold_cool(f'Auto-block mode activated.\n\nYour message was flagged as potentially unwanted. Further messages from you will result in your account being blocked.')
                await client.send_message(message.chat.id, warning_message)
-            elif user_count > block_count:
+            else:
                logger.debug("Blocking user...")
                await client.block_user(sender_id)
-        elif delete_count > 0 and (block_count > delete_count or block_count ==0):
-            if delete_count == user_count:
+        elif delete_count > 0 and user_count >= delete_count:
+            if user_count == delete_count:
                warning_message = bold_cool('Auto-delete mode activated.\n\nYour message was flagged as potentially irrelevant. All subsequent messages from you will be automatically deleted.')
                await client.send_message(message.chat.id, warning_message)
-            elif user_count > delete_count:
-               logger.debug("Blocking user...")
+            else:
+               logger.debug("Deleting message...")
                await message.delete()
 
 @Client.on_message(filters.command("approve", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)

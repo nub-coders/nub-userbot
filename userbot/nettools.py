@@ -15,6 +15,116 @@ from tools import (
 
 logger = logging.getLogger("userbot")
 
+# Percentage notation handling for the calculator.
+_PERCENT_OF_RE = re.compile(r'(\d+(?:\.\d+)?)\%\s*(?:of\s+)?(?=[\d(])')
+_PERCENT_DELTA_RE = re.compile(r'([\+\-])\s*(\d+(?:\.\d+)?)\%(?!\s*[\d\(])')
+_BARE_PERCENT_RE = re.compile(r'(\d+(?:\.\d+)?)\%')
+_NUMBER_RE = re.compile(r'\d+(?:\.\d+)?')
+
+
+def _paren_end(text: str, start: int) -> int:
+    """Index just past the ')' closing the '(' at `start`; -1 if never closed."""
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == '(':
+            depth += 1
+        elif text[i] == ')':
+            depth -= 1
+            if depth == 0:
+                return i + 1
+    return -1
+
+
+def _expand_percent_of(expression: str) -> str:
+    """Rewrite "X% of Y" / "X% Y" / "X% (Y)" as ((X / 100) * Y).
+
+    The right operand is taken by scanning rather than by a capture group: a
+    group can only grab the opening '(' of a parenthesized operand, so
+    "50% (10 + 30)" produced "((50 / 100) * ()10 + 30)" — the template's own
+    ')' closed the captured '(' and the remainder dangled.
+    """
+    pos = 0
+    while True:
+        match = _PERCENT_OF_RE.search(expression, pos)
+        if not match:
+            return expression
+        start = match.end()  # the lookahead guarantees a char here
+        if expression[start] == '(':
+            end = _paren_end(expression, start)
+            if end == -1:
+                # Unbalanced parens — leave it for ast.parse to report.
+                pos = match.end()
+                continue
+        else:
+            end = _NUMBER_RE.match(expression, start).end()
+        prefix = f'(({match.group(1)} / 100) * '
+        expression = (expression[:match.start()] + prefix
+                      + expression[start:end] + ')' + expression[end:])
+        # Resume inside the operand so nested percentages still expand.
+        pos = match.start() + len(prefix)
+
+
+def _base_start(prefix: str) -> int:
+    """Index in `prefix` where the innermost open sub-expression begins.
+
+    Scans back for an unclosed '(' so a percent inside parens uses only the
+    enclosing group as its base: in "(100 + 10%) * 2" the base is "100", not
+    "(100" — wrapping the latter would leave the parens unbalanced.
+    """
+    depth = 0
+    for i in range(len(prefix) - 1, -1, -1):
+        if prefix[i] == ')':
+            depth += 1
+        elif prefix[i] == '(':
+            if depth == 0:
+                return i + 1
+            depth -= 1
+    return 0
+
+
+def _expand_percentages(expression: str) -> str:
+    """Rewrite percentage notation into plain arithmetic.
+
+    Handles three forms, in order:
+      1. "X% of Y" / "X% Y" / "X% (Y)"  -> ((X / 100) * Y)
+      2. "base + P%" / "base - P%"      -> (base) * (1 +/- P / 100)
+      3. standalone "X%"                -> (X / 100)
+
+    Rule 2 runs left-to-right, taking the whole expression accumulated so far
+    as the base, so chains compound the way phone calculators do:
+    "100 + 10% + 10%" -> 121, and "100 + 50 - 10%" -> 135 (10% of 150, not 50).
+    A plain re.sub cannot do this — after one substitution the base ends in ')'
+    rather than a digit, leaving a second pass nothing to anchor on, so the
+    trailing term degrades to a bare "X%" (the 110.1 bug).
+
+    The multiplicative form keeps the base once per term; restating it on both
+    sides of the operator would double the text per term (716 chars for a
+    5-term chain).
+
+    Modulo is left alone: every rule requires the digit to sit immediately
+    before '%', so the spaced form "15 % 4" never matches.
+    """
+    expression = _expand_percent_of(expression)
+
+    pos = 0
+    while True:
+        match = _PERCENT_DELTA_RE.search(expression, pos)
+        if not match:
+            break
+        start = _base_start(expression[:match.start()])
+        base = expression[start:match.start()].strip()
+        # Nothing to the left (e.g. a leading "-10%") — leave it to rule 3.
+        if not base:
+            pos = match.end()
+            continue
+        op, percent = match.group(1), match.group(2)
+        rewritten = f'({base}) * (1 {op} {percent} / 100)'
+        expression = expression[:start] + rewritten + expression[match.end():]
+        pos = start + len(rewritten)
+
+    return _BARE_PERCENT_RE.sub(r'(\1 / 100)', expression)
+
+
 # HTTP ping (latency test)
 @Client.on_message(filters.command("pingurl", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 async def http_ping(client: Client, message: Message):
@@ -144,21 +254,42 @@ async def calculator(client: Client, message: Message):
         expression = expression.replace('^', '**')
         expression = expression.replace('×', '*')
         expression = expression.replace('÷', '/')
-        
-        # Handle percentage calculations (e.g., "38% 2985", "38% of 2985", "2985 - 38%", "50%")
-        # 1. "X% of Y" or "X% Y" or "X% (Y)" -> ((X / 100) * Y)
-        expression = re.sub(r'(\d+(?:\.\d+)?)\%\s*(?:of\s+)?(\d+(?:\.\d+)?|\()', r'((\1 / 100) * \2)', expression)
-        # 2. "base + P%" or "base - P%" -> base +/- (base * P / 100)
-        expression = re.sub(r'(\d+(?:\.\d+)?)\s*([\+\-])\s*(\d+(?:\.\d+)?)\%(?!\s*[\d\(])', r'\1 \2 (\1 * \3 / 100)', expression)
-        # 3. Standalone "X%" -> (X / 100)
-        expression = re.sub(r'(\d+(?:\.\d+)?)\%', r'(\1 / 100)', expression)
+
+        expression = _expand_percentages(expression)
         
         # Parse the expression as an AST
         parsed = ast.parse(expression, mode='eval')
 
-        # Check for dangerous operations
+        # Whitelist of safe AST node types — anything else is rejected.
+        _SAFE_NODES = (
+            ast.Expression, ast.BinOp, ast.UnaryOp, ast.Call,
+            ast.Name, ast.Constant, ast.Load,
+            # Arithmetic / comparison operators
+            ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv,
+            ast.Mod, ast.Pow, ast.USub, ast.UAdd,
+            # Backwards-compat: ast.Num/Str still emitted by some Python versions
+            *(x for x in (getattr(ast, 'Num', None), getattr(ast, 'Str', None)) if x),
+        )
+
         for node in ast.walk(parsed):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            if not isinstance(node, _SAFE_NODES):
+                return await edit_or_reply(
+                    message,
+                    f"❌ **Unsafe operation detected**\n\n"
+                    f"⚠️ Expression contains disallowed construct: "
+                    f"`{type(node).__name__}`\n\n"
+                    f"💡 Use `{HARDCODED_PREFIXES[0]}calc` for available functions"
+                )
+            # For Call nodes, only allow direct name-based calls (e.g. sqrt(x)),
+            # not attribute calls (e.g. obj.method()).
+            if isinstance(node, ast.Call):
+                if not isinstance(node.func, ast.Name):
+                    return await edit_or_reply(
+                        message,
+                        f"❌ **Unsafe operation detected**\n\n"
+                        f"⚠️ Only direct function calls are allowed\n\n"
+                        f"💡 Use `{HARDCODED_PREFIXES[0]}calc` for available functions"
+                    )
                 if node.func.id not in safe_namespace:
                     return await edit_or_reply(
                         message,
@@ -170,9 +301,13 @@ async def calculator(client: Client, message: Message):
         # Evaluate the expression
         result = eval(compile(parsed, '<string>', 'eval'), {"__builtins__": {}}, safe_namespace)
 
-        # Normalize float results
+        # Normalize float results. Round before the integer check: the
+        # percentage rewrite divides by 100, so exact results arrive as
+        # 110.00000000000001 and would otherwise render as "110.0".
         if isinstance(result, float):
-            result = int(result) if result.is_integer() else round(result, 10)
+            result = round(result, 10)
+            if result.is_integer():
+                result = int(result)
 
         await edit_or_reply(message, f"🧮 `{original_expression}` = `{result}`")
 

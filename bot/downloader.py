@@ -108,10 +108,11 @@ def _get_file_name_from_url(url):
         resp = requests.head(url, allow_redirects=True, timeout=10)
         cd = resp.headers.get('Content-Disposition')
         if cd and 'filename=' in cd:
-            return cd.split('filename=')[-1].strip('"')
+            raw = cd.split('filename=')[-1].strip('"')
+            return os.path.basename(raw) or 'downloaded_file'
     except Exception:
         pass
-    return url.split('/')[-1].split('?')[0] or 'downloaded_file'
+    return os.path.basename(url.split('/')[-1].split('?')[0]) or 'downloaded_file'
 
 
 # ─────────────────────────── t.me link parsing ─────────────────────────────
@@ -211,6 +212,8 @@ def _url_filter(_, __, message: Message):
 @Client.on_message(filters.private & filters.incoming & filters.create(_url_filter))
 async def handle_url(client, message: Message):
     sender = message.from_user.id
+    if not is_admin(sender):
+        return
     text = (message.text or "").strip()
     entities = message.entities or []
 

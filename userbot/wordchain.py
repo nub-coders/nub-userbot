@@ -20,11 +20,12 @@ def find_random_words(filename, start_letter, word_length, include_letter=None):
         return []
 
     # Filtering words based on criteria
+    # ponytail: on9wordchainbot source says "at least N letters", but empirically rejects longer words — using exact match
     filtered_words = [
         word for word in words
         if word.startswith(start_letter) and
            (not include_letter or include_letter in word) and
-           len(word) >= word_length and len(word) >3 and re.match("^[A-Za-z]+$", word)
+           len(word) == word_length and re.match("^[A-Za-z]+$", word)
     ]
 
     if not filtered_words:

@@ -683,15 +683,17 @@ async def build_user_info(client, user) -> Optional[Dict[str, Any]]:
             logger.warning(f"Error processing username info: {e}")
             user_info["name"] = "Unknown User"
         
-        # Handle profile photo (supports both User and Chat objects)
+        # Handle profile photo (supports both User and Chat objects). We keep both
+        # an inline base64 copy and the source file id — _shape_payload() picks
+        # whichever dialect the target endpoint speaks.
         try:
             photo_path = None
+            file_id = None
             session_name = f'user_{client.me.id}'
             user_dir = session_name
             os.makedirs(user_dir, exist_ok=True)
 
             if hasattr(user, 'photo') and user.photo:
-                file_id = None
                 if hasattr(user.photo, 'big_file_id') and user.photo.big_file_id:
                     file_id = user.photo.big_file_id
                 elif hasattr(user.photo, 'small_file_id') and user.photo.small_file_id:
@@ -709,11 +711,15 @@ async def build_user_info(client, user) -> Optional[Dict[str, Any]]:
                 except Exception as e:
                     logger.debug(f"Failed to download photo via user/chat object: {e}")
 
+            photo = {}
             if photo_path and os.path.exists(photo_path):
                 with open(photo_path, "rb") as f:
-                    base64_img = base64.b64encode(f.read()).decode('utf-8')
-                user_info["photo"] = {"base64": base64_img}
+                    photo["base64"] = base64.b64encode(f.read()).decode('utf-8')
                 os.remove(photo_path)
+            if file_id:
+                photo["_file_id"] = file_id
+            if photo:
+                user_info["photo"] = photo
         except Exception as e:
             logger.warning(f"Error getting user photo: {e}")
         
@@ -881,15 +887,16 @@ async def get_media_info(client, message) -> Optional[Dict[str, Any]]:
         temp_file_path = await client.download_media(message=thumbnail_file_id, file_name=f"{user_dir}/")
         logger.debug(f"[DEBUG] Media downloaded to: {temp_file_path}")
 
-        # Convert to base64
+        # Convert to base64, keeping the file id for endpoints that resolve it
+        # themselves (see _shape_payload).
         if temp_file_path and os.path.exists(temp_file_path):
             with open(temp_file_path, "rb") as image_file:
                 base64_data = base64.b64encode(image_file.read()).decode('utf-8')
             logger.debug(f"[DEBUG] Media thumbnail converted to base64 successfully")
-            return {"base64": base64_data}
+            return {"base64": base64_data, "_file_id": thumbnail_file_id}
         else:
-            logger.debug("[DEBUG] Failed to download thumbnail for base64 conversion")
-            return None
+            logger.debug("[DEBUG] Failed to download thumbnail; falling back to file_id only")
+            return {"_file_id": thumbnail_file_id}
 
     except Exception as e:
         logger.debug(f"[DEBUG] Exception during download/upload process: {e}")
@@ -1122,21 +1129,76 @@ async def convert_entities(entities) -> List[Dict[str, Any]]:
     return converted
 
 
+# (endpoint, speaks_base64). The nubcoders fork accepts inline `{"base64": ...}`
+# for avatars and media and prefers it over a file_id; upstream LyoSU/quote-api
+# has no base64 support at all — it only resolves `photo.big_file_id` and
+# `media[].file_id` through the Bot API, so those hosts need the file-id dialect.
+# build_user_info()/get_media_info() collect both and stash the id under the
+# private `_file_id` key for _shape_payload().
+_QUOTE_ENDPOINTS = [
+    ('https://quote.nubcoders.com/generate', True),
+    ('http://quote-api:3000/generate', True),
+    ('http://127.0.0.1:3000/generate', True),
+    ('https://bot.lyo.su/quote/generate', False),
+]
+
+
+def _shape_media(media, base64_ok):
+    """Render one collected media dict in the target endpoint's dialect.
+
+    base64 goes as a bare object: the fork reads it only there, not from inside
+    an array. The file-id form must be a list — upstream indexes `media[0]`, so
+    a bare object would silently resolve to undefined."""
+    if base64_ok and media.get("base64"):
+        return {"base64": media["base64"]}
+    file_id = media.get("_file_id")
+    return [{"file_id": file_id}] if file_id else None
+
+
+def _shape_payload(payload, base64_ok):
+    """Copy `payload` with every media/photo entry shaped for this endpoint and
+    the internal `_file_id` keys stripped. Entries that cannot be expressed in
+    the target dialect are dropped rather than sent malformed."""
+    def shape_user(user):
+        if not isinstance(user, dict) or "photo" not in user:
+            return user
+        user = dict(user)
+        photo = user.pop("photo")
+        if base64_ok and photo.get("base64"):
+            user["photo"] = {"base64": photo["base64"]}
+        elif photo.get("_file_id"):
+            user["photo"] = {"big_file_id": photo["_file_id"]}
+        return user
+
+    def shape_message(msg):
+        if not isinstance(msg, dict):
+            return msg
+        msg = dict(msg)
+        if isinstance(msg.get("from"), dict):
+            msg["from"] = shape_user(msg["from"])
+        if isinstance(msg.get("media"), dict):
+            shaped = _shape_media(msg["media"], base64_ok)
+            msg["media"] = shaped if shaped else None
+            if not shaped:
+                del msg["media"]
+        reply = msg.get("replyMessage")
+        if isinstance(reply, dict):
+            msg["replyMessage"] = shape_message(reply)
+        return msg
+
+    body = dict(payload)
+    body["messages"] = [shape_message(m) for m in payload.get("messages", [])]
+    return body
+
+
 async def generate_quote(client, payload: Dict[str, Any], user_dir: str) -> Optional[str]:
     """Generate quote using the API with proper error handling and fallback"""
-    
-    # List of endpoints to try in order
-    endpoints = [
-        'https://quote.nubcoders.com/generate',
-        'http://quote-api:3000/generate',
-        'http://127.0.0.1:3000/generate',
-        'https://bot.lyo.su/quote/generate'
-    ]
-    
-    for i, endpoint in enumerate(endpoints, 1):
+
+    for i, (endpoint, base64_ok) in enumerate(_QUOTE_ENDPOINTS, 1):
         try:
             logger.debug(f"Attempting quote generation with endpoint {i}: {endpoint}")
-            response = requests.post(endpoint, json=payload, timeout=30)
+            body = _shape_payload(payload, base64_ok)
+            response = requests.post(endpoint, json=body, timeout=30)
             response.raise_for_status()
             response_json = response.json()
 
@@ -1154,7 +1216,7 @@ async def generate_quote(client, payload: Dict[str, Any], user_dir: str) -> Opti
             return quote_path
         except Exception as e:
             logger.warning(f"Quote generation error with endpoint {i} ({endpoint}): {e}")
-            if i == len(endpoints):
+            if i == len(_QUOTE_ENDPOINTS):
                 logger.error("All endpoints failed")
                 return None
             else:

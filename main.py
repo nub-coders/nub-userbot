@@ -34,7 +34,6 @@ async def main():
             sleep_threshold=30,
             plugins=dict(root="bot")
         )
-        apps["app"] = app
 
         # Initialize conversation for the bot
         Conversation(app)
@@ -54,10 +53,14 @@ async def main():
     try:
         # Start bot client if it was created. A bot failure (e.g. FLOOD_WAIT
         # on auth.ImportBotAuthorization) must NOT take down the userbot — the
-        # bot client only powers inline/special-group features.
+        # bot client only powers inline/special-group features. Only a client
+        # that actually connected goes into apps["app"]: tools._BotProxy falls
+        # back to the userbot when it's absent, but a dead client parked there
+        # would defeat that fallback and raise ConnectionError instead.
         if app is not None:
             try:
                 await app.start()
+                apps["app"] = app
                 print(f"Bot started successfully!")
                 print(f"Bot logged in as: {app.me.first_name} (@{app.me.username})")
             except Exception as e:

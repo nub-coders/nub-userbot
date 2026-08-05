@@ -1,6 +1,6 @@
 """Tests for tools.py pure-logic helpers: _SessionCache TTL and the retry()
 decorator's FloodWait recovery."""
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pyrogram.errors import FloodWait
@@ -122,3 +122,43 @@ def test_commands_keyboard():
     finally:
         categories.update(old_cats)
 
+
+def test_bot_proxy_falls_back_to_userbot_when_no_bot_registered():
+    """apps["app"] absent -> _BotProxy uses the userbot client, so every
+    `bot.send_message(...)` site keeps working without a BOT_TOKEN."""
+    from config import apps, clients
+    from tools import bot
+
+    userbot = MagicMock(me=MagicMock(id=999, username="owner"))
+    apps.pop("app", None)
+    clients[999] = userbot
+    try:
+        assert bot.me.username == "owner"
+        assert bot.send_message is userbot.send_message
+    finally:
+        clients.pop(999, None)
+
+
+def test_bot_proxy_raises_when_no_client_at_all():
+    from config import apps, clients
+    from tools import bot
+
+    apps.pop("app", None)
+    saved = dict(clients)
+    clients.clear()
+    try:
+        with pytest.raises(RuntimeError):
+            bot.send_message
+    finally:
+        clients.update(saved)
+
+
+def test_main_registers_bot_in_apps_only_after_successful_start():
+    """Regression: a client parked in apps["app"] before start() defeats the
+    _BotProxy userbot fallback and raises ConnectionError instead."""
+    import inspect
+    import main
+
+    src = inspect.getsource(main.main)
+    assert src.count('apps["app"] = app') == 1
+    assert src.index("await app.start()") < src.index('apps["app"] = app')

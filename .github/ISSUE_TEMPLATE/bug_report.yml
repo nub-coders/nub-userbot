@@ -42,7 +42,7 @@ body:
     attributes:
       label: Actual Behavior
       description: What actually happens?
-      placeholder: Bot crashes with "KeyError: 'photo'"
+      placeholder: Bot crashes with KeyError for photo attribute
     validations:
       required: true
 

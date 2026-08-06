@@ -380,10 +380,14 @@ async def play_game_loop(client: Client, chat_id: int):
 
 
 
+# group=3: pyrogram runs only the FIRST matching handler per group, so this
+# catch-all cannot share group 0 with the .wordseek/.gameinfo command handlers
+# below — in a group chat it matched every outgoing message and swallowed them.
 @Client.on_message(
     filters.text
     & (filters.user(['wordseekbot', 'crocodilegameenn_bot']) | filters.group)
-    & ~filters.incoming
+    & ~filters.incoming,
+    group=3,
 )
 async def auto_play_handler(client: Client, message: Message):
     """Handle auto-play of WordSeek game - trigger words and user input"""
@@ -480,10 +484,13 @@ async def wordseek_info(client: Client, message: Message):
 
 
 # Manual guess submission
+# group=4: same reason — this one matches every outgoing text message, which
+# would otherwise also shadow any extra plugin loaded after this file.
 @Client.on_message(
-    filters.text & 
-    ~filters.regex(r"^/") & 
-    ~filters.incoming
+    filters.text &
+    ~filters.regex(r"^/") &
+    ~filters.incoming,
+    group=4,
 )
 async def manual_guess(client: Client, message: Message):
     """Handle manual word guesses in auto-game"""

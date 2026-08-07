@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 # Active game states: {chat_id: game_state}
 ACTIVE_GAMES: Dict[int, Dict] = {}
 # Configuration
-AUTO_DELAY = 4.0  # Seconds between guesses
+AUTO_DELAY = float(ws_config.GAME_SETTINGS.get('delay', 1.0))  # Seconds between guesses
+
 
 # Trigger words - auto-play only starts when user types one of these
 # Keep starter words aligned with supported game lengths.

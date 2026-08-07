@@ -17,3 +17,9 @@ def test_listeners_are_not_in_the_command_group():
 
 def test_listeners_do_not_shadow_each_other():
     assert _group(ws.auto_play_handler) != _group(ws.manual_guess)
+
+
+def test_wordseek_speed_delay():
+    assert isinstance(ws.AUTO_DELAY, float)
+    assert ws.AUTO_DELAY <= 2.0
+

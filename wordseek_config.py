@@ -5,4 +5,7 @@
 GAME_SETTINGS = {
     # Supported word lengths for WordSeek
     'supported_lengths': [4, 5, 6],
+    # Delay (in seconds) between automated guesses
+    'delay': 2.0,
 }
+

@@ -14,6 +14,7 @@ import ai_backend
 from ai_backend import split_message
 from config import HARDCODED_PREFIXES, AGENT_ALLOW_SHELL
 from tools import retry, edit_or_reply, styled_error
+from userbot.ai_telegram_tools import TOOL_SCHEMAS, build_telegram_tools
 
 logger = logging.getLogger("userbot.ai_agent")
 
@@ -27,9 +28,7 @@ def _resolve_query(message: Message) -> str:
     Replied text is fenced and labelled so the model treats it as quoted data
     rather than as instructions addressed to it.
     """
-    args = ""
-    if message.text and len(message.text.split(maxsplit=1)) > 1:
-        args = message.text.split(maxsplit=1)[1].strip()
+    args = _command_args(message)
 
     replied = message.reply_to_message
     if replied:
@@ -40,6 +39,38 @@ def _resolve_query(message: Message) -> str:
             return f"[{label}]:\n\"\"\"\n{quoted}\n\"\"\"\n\nUser request: {question}"
 
     return args
+
+
+def _command_args(message: Message) -> str:
+    """The text the user typed after the command, empty if they typed none."""
+    if message.text and len(message.text.split(maxsplit=1)) > 1:
+        return message.text.split(maxsplit=1)[1].strip()
+    return ""
+
+
+# Longest echoed question. `.ask` overwrites the user's own message, so the
+# question is repeated above the answer -- but a wall of quoted text would
+# crowd out the answer itself.
+_MAX_ECHO = 300
+
+
+def _format_answer(message: Message, answer: str) -> str:
+    """Put the question back above the answer.
+
+    `.ask` edits the user's own message in place, so without this the question
+    disappears and the reply reads as an answer to nothing.
+    """
+    asked = _command_args(message)
+    if not asked and message.reply_to_message:
+        asked = "(about the replied-to message)"
+    if not asked:
+        return answer
+
+    if len(asked) > _MAX_ECHO:
+        asked = asked[:_MAX_ECHO].rstrip() + "…"
+    # Collapse newlines so a multi-line question stays a single quoted header.
+    asked = " ".join(asked.split())
+    return f"❓ **{asked}**\n\n{answer}"
 
 
 @Client.on_message(filters.me & filters.command("ask", prefixes=HARDCODED_PREFIXES))
@@ -61,7 +92,9 @@ async def ask_handler(client: Client, message: Message):
         )
         return
 
-    status_msg = await edit_or_reply(message, "🧠 **AI is thinking...**")
+    status_msg = await edit_or_reply(
+        message, _format_answer(message, "🧠 **AI is thinking...**")
+    )
 
     # agent_answer runs in a worker thread, so status updates have to be
     # bounced back onto the event loop rather than awaited directly.
@@ -76,7 +109,7 @@ async def ask_handler(client: Client, message: Message):
         if pending and not pending.done():
             return  # an edit is still in flight; skip this one rather than queue
         last_status["pending"] = asyncio.run_coroutine_threadsafe(
-            _safe_edit(status_msg, text), loop
+            _safe_edit(status_msg, _format_answer(message, text)), loop
         )
 
     try:
@@ -84,26 +117,34 @@ async def ask_handler(client: Client, message: Message):
             asyncio.to_thread(
                 ai_backend.agent_answer,
                 query,
-                None,
-                None,
+                ai_backend.build_tools() + TOOL_SCHEMAS,
+                ai_backend.build_tool_impls(
+                    extra_tools=build_telegram_tools(client, message, loop)
+                ),
                 status_callback,
                 message.chat.id,
             ),
             timeout=ASK_TIMEOUT,
         )
     except asyncio.TimeoutError:
-        await _safe_edit(status_msg, styled_error(f"Request timed out after {ASK_TIMEOUT}s."))
+        await _safe_edit(
+            status_msg,
+            _format_answer(message, styled_error(f"Request timed out after {ASK_TIMEOUT}s.")),
+        )
         return
     except ai_backend.AgentError as e:
-        await _safe_edit(status_msg, styled_error(f"AI service error: {ai_backend.scrub(str(e))}"))
+        await _safe_edit(
+            status_msg,
+            _format_answer(message, styled_error(f"AI service error: {ai_backend.scrub(str(e))}")),
+        )
         return
     except Exception as e:
         # Arbitrary exceptions can quote the upstream URL, so scrub here too.
         logger.exception("Agent run failed")
-        await _safe_edit(status_msg, styled_error(ai_backend.scrub(str(e))))
+        await _safe_edit(status_msg, _format_answer(message, styled_error(ai_backend.scrub(str(e)))))
         return
 
-    chunks = split_message(answer or "[no response]")
+    chunks = split_message(_format_answer(message, answer or "[no response]"))
     await _safe_edit(status_msg, chunks[0])
     for chunk in chunks[1:]:
         await status_msg.reply(chunk, quote=True)

@@ -42,9 +42,14 @@ def _resolve_query(message: Message) -> str:
 
 
 def _command_args(message: Message) -> str:
-    """The text the user typed after the command, empty if they typed none."""
-    if message.text and len(message.text.split(maxsplit=1)) > 1:
-        return message.text.split(maxsplit=1)[1].strip()
+    """The text the user typed after the command, empty if they typed none.
+
+    Falls back to the caption: `filters.command` matches captions too, so
+    `.ask what is this` sent as a photo caption reaches this handler.
+    """
+    text = message.text or message.caption or ""
+    if len(text.split(maxsplit=1)) > 1:
+        return text.split(maxsplit=1)[1].strip()
     return ""
 
 

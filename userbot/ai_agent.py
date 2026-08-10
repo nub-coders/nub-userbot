@@ -42,9 +42,14 @@ def _resolve_query(message: Message) -> str:
 
 
 def _command_args(message: Message) -> str:
-    """The text the user typed after the command, empty if they typed none."""
-    if message.text and len(message.text.split(maxsplit=1)) > 1:
-        return message.text.split(maxsplit=1)[1].strip()
+    """The text the user typed after the command, empty if they typed none.
+
+    Falls back to the caption: `filters.command` matches captions too, so
+    `.ask what is this` sent as a photo caption reaches this handler.
+    """
+    text = message.text or message.caption or ""
+    if len(text.split(maxsplit=1)) > 1:
+        return text.split(maxsplit=1)[1].strip()
     return ""
 
 
@@ -53,9 +58,27 @@ def _command_args(message: Message) -> str:
 # crowd out the answer itself.
 _MAX_ECHO = 300
 
+# Pyrogram's markdown has no backslash escape, so an unbalanced delimiter in
+# the question (`.ask what does ** mean`) swallows text and leaks formatting
+# into the answer below it. A zero-width space between the characters breaks
+# every multi-char delimiter (`**`, `__`, `--`, `~~`, `||`) while staying
+# invisible; `](` is broken the same way so a question can't become a link.
+_ZWSP = "​"
+_MD_CHARS = "*_-~|"
 
-def _format_answer(message: Message, answer: str) -> str:
-    """Put the question back above the answer.
+
+def _defuse_md(text: str) -> str:
+    """Break markdown delimiters so a question renders as the user typed it."""
+    # Backticks are dropped rather than defused: markdown mode has no way to
+    # display a literal one, so leaving it in would only open a stray code span.
+    text = text.replace("`", "")
+    for ch in _MD_CHARS:
+        text = text.replace(ch, ch + _ZWSP)
+    return text.replace("](", "]" + _ZWSP + "(")
+
+
+def _format_answer(message: Message, answer: str, model: str = "") -> str:
+    """Put the question back above the answer, quoted, and name the model.
 
     `.ask` edits the user's own message in place, so without this the question
     disappears and the reply reads as an answer to nothing.
@@ -63,14 +86,19 @@ def _format_answer(message: Message, answer: str) -> str:
     asked = _command_args(message)
     if not asked and message.reply_to_message:
         asked = "(about the replied-to message)"
-    if not asked:
-        return answer
 
-    if len(asked) > _MAX_ECHO:
-        asked = asked[:_MAX_ECHO].rstrip() + "…"
-    # Collapse newlines so a multi-line question stays a single quoted header.
-    asked = " ".join(asked.split())
-    return f"❓ **{asked}**\n\n{answer}"
+    parts = []
+    if asked:
+        if len(asked) > _MAX_ECHO:
+            asked = asked[:_MAX_ECHO].rstrip() + "…"
+        # Collapse newlines: a blockquote line break would split the quote, and
+        # the header reads better as one line anyway.
+        asked = " ".join(asked.split())
+        parts.append(f"> ❓ {_defuse_md(asked)}")
+    parts.append(answer)
+    if model:
+        parts.append(f"🤖 `{model}`")
+    return "\n\n".join(parts)
 
 
 @Client.on_message(filters.me & filters.command("ask", prefixes=HARDCODED_PREFIXES))
@@ -100,6 +128,9 @@ async def ask_handler(client: Client, message: Message):
     # bounced back onto the event loop rather than awaited directly.
     loop = asyncio.get_running_loop()
     last_status = {"text": "", "pending": None}
+    # Filled in by agent_answer with the model that actually served the run --
+    # fallback rotation means it isn't always the configured one.
+    meta = {}
 
     def status_callback(text: str):
         if text == last_status["text"]:
@@ -123,6 +154,7 @@ async def ask_handler(client: Client, message: Message):
                 ),
                 status_callback,
                 message.chat.id,
+                meta=meta,
             ),
             timeout=ASK_TIMEOUT,
         )
@@ -144,7 +176,9 @@ async def ask_handler(client: Client, message: Message):
         await _safe_edit(status_msg, _format_answer(message, styled_error(ai_backend.scrub(str(e)))))
         return
 
-    chunks = split_message(_format_answer(message, answer or "[no response]"))
+    chunks = split_message(
+        _format_answer(message, answer or "[no response]", meta.get("model", ""))
+    )
     await _safe_edit(status_msg, chunks[0])
     for chunk in chunks[1:]:
         await status_msg.reply(chunk, quote=True)

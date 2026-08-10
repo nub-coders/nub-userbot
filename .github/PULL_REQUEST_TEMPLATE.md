@@ -16,7 +16,6 @@
 ## Checklist
 
 - [ ] I tested these changes locally
-- [ ] Tests pass (`pytest -q`)
 - [ ] Linting passes (`ruff check .`)
 - [ ] I updated documentation where needed
 - [ ] New commands (if any) are documented in the README

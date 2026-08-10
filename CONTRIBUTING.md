@@ -18,8 +18,8 @@ Thanks for your interest! nub-userbot is a feature-rich Telegram userbot built w
 git clone https://github.com/nub-coders/nub-userbot.git
 cd nub-userbot
 
-# Install dependencies (runtime + dev)
-pip install -r requirements.txt -r requirements-dev.txt
+# Install dependencies
+pip install -r requirements.txt
 
 # Copy and configure environment
 cp .env.example .env
@@ -38,12 +38,11 @@ python3 main.py
 ├── userbot/             Userbot command modules
 │   ├── account.py       Account management
 │   ├── admin.py         Admin tools
-│   ├── ai.py            AI features
+│   ├── ai_agent.py      Agentic AI assistant (.ask)
 │   ├── clone.py         Profile cloning
 │   └── ...              (afk, eval, font, forward, etc.)
 ├── bot/                 Bot-mode features (inline, downloader)
 ├── utils/               Shared helpers
-├── tests/               pytest suite
 ├── ruff.toml            Lint configuration
 └── .env.example         Environment template
 ```
@@ -52,24 +51,20 @@ python3 main.py
 
 1. **Fork and clone** your fork
 2. **Create a feature branch** from `main`
-3. **Write or update tests** for your changes (see `tests/`)
-4. **Run tests and lint locally** before pushing
-5. **Keep commits focused** — one logical change per commit
-6. **Open a PR** describing what changed and why
+3. **Run the linter locally** before pushing
+4. **Keep commits focused** — one logical change per commit
+5. **Open a PR** describing what changed and why
 
-## Testing
+## Linting
 
-This project has a real test suite and lint gate (both run in CI):
+This project has a lint gate that runs in CI:
 
 ```bash
-# Run the test suite
-pytest -q
-
 # Run the linter (scoped gate — see ruff.toml)
 ruff check .
 ```
 
-Both must pass before a PR can be merged.
+It must pass before a PR can be merged.
 
 ## Code Style
 
@@ -89,7 +84,7 @@ custom commands — you don't need to modify the core repo.
 
 - Describe what the PR does
 - Link any related issues
-- Ensure `pytest -q` and `ruff check .` pass
+- Ensure `ruff check .` passes
 - Update README if you added commands or changed setup
 
 ## Need Help?

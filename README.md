@@ -41,7 +41,7 @@ A feature-rich Telegram userbot built with Pyrogram, offering a wide range of au
 - **Message Management**: Bulk delete, purge, and moderate messages
 
 ### 🤖 AI Integration
-- **Gemini AI**: Multiple AI commands for chat, reasoning, and code generation
+- **AI Agent**: `.ask` runs a tool-use loop — the model can search the web, read files, and search the codebase before answering, and remembers the conversation per chat
 - **Smart Responses**: AI-powered text completion and analysis
 - **Content Generation**: Automated writing and summarization
 
@@ -111,7 +111,11 @@ All configuration is done through environment variables (or a `.env` file). See 
 
 ### Optional
 - `BOT_TOKEN` — bot token from [@BotFather](https://t.me/BotFather), enables inline bot features
-- `GEMINI_API_KEY` — Google Gemini API key from [aistudio.google.com](https://aistudio.google.com/app/apikey), enables AI features
+- `AI_API_KEY` — API key for the AI gateway, enables the agentic `.ask` command and Word Grid vision
+- `AGENT_MODEL` — model the agent uses (default `claude-opus-4-8`); set `AGENT_USE_CHEAPEST_MODEL=true` to auto-pick the cheapest model instead
+- `AGENT_VISION_MODEL` — vision-capable model for image requests (default `claude-opus-4-8`)
+- `AI_BASE_URL` — base URL of your Anthropic-compatible gateway; required alongside `AI_API_KEY`
+- `AGENT_ALLOW_SHELL` — lets the agent run shell commands (default `false`; see the warning under AI Agent Commands)
 - `YT_DLP_API_KEY` / `YT_DLP_BASE_URL` — YouTube download service configuration
 - `MONGO_URI` / `DB_NAME` — MongoDB for persistent storage; leave `MONGO_URI` empty to use in-memory storage (data is lost on restart)
 - `GROUP` / `CHANNEL` — your support group and updates channel usernames (without @)
@@ -149,15 +153,12 @@ All configuration is done through environment variables (or a `.env` file). See 
 - `.purge` - Delete message range
 - `.power <type>` - Promote users with permissions
 
-### AI Commands (Gemini, prefixed with `/`)
-- `/chat <text>` - General AI conversation
-- `/reason <text>` - Step-by-step problem solving
-- `/code <request>` - Generate or fix code
-- `/summarize <text>` - Summarize content
-- `/translate <text>` - Translate languages
-- `/write <topic>` - Generate written content
-- `/analysis <text>` - In-depth analysis
-- `/gemini_help` - List all AI commands
+### AI Commands
+- `.ask <question>` - Ask the agent; it can search the web, read files, and search the codebase before answering. Reply to a message to pass it along as context.
+- `.askclear` - Forget the agent's conversation memory for this chat (`.askreset` also works)
+- `.askmodel [refresh]` - Show the active model, how it was selected, and its pricing
+
+> Requires `AI_API_KEY` and `AI_BASE_URL`. The agent's shell tool is **off by default** — `.ask` can embed text from other people's messages into the prompt, so enabling `AGENT_ALLOW_SHELL=true` turns that text into a command-injection path. Use `.eval` / `.sh` to run commands yourself instead.
 
 ## ⭐ Telegram Premium Features
 

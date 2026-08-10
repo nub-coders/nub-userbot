@@ -15,9 +15,39 @@ raw_api_id = os.getenv('API_ID', '').strip()
 API_ID = int(raw_api_id) if raw_api_id.isdigit() else 0
 API_HASH = os.getenv('API_HASH', '')
 
-# Gemini API configuration
-# Optional: Get from https://aistudio.google.com/app/apikey (needed for AI features)
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+# AI gateway configuration (Anthropic-compatible)
+# Optional: powers the agentic `.ask` command in userbot/ai_agent.py
+# AI_BASE_URL has no default — set it in .env to the gateway you use. Without
+# it the AI features stay off, the same as an absent AI_API_KEY.
+AI_API_KEY = os.getenv('AI_API_KEY', '')
+AI_BASE_URL = os.getenv('AI_BASE_URL', '').rstrip('/')
+AGENT_MODEL = os.getenv('AGENT_MODEL', 'claude-opus-4-8')
+# Image requests need a vision-capable model. Kept separate from AGENT_MODEL so
+# cheapest-model auto-selection can't route an image at a text-only model.
+AGENT_VISION_MODEL = os.getenv('AGENT_VISION_MODEL', 'claude-opus-4-8')
+AGENT_MAX_TOKENS = int(os.getenv('AGENT_MAX_TOKENS', '2048'))
+
+# Agent behaviour / safety limits
+AGENT_TOOL_TIMEOUT = int(os.getenv('AGENT_TOOL_TIMEOUT', '60'))          # seconds per shell command
+AGENT_MAX_OUTPUT_CHARS = int(os.getenv('AGENT_MAX_OUTPUT_CHARS', '6000'))  # per tool result
+AGENT_MAX_ITERATIONS = int(os.getenv('AGENT_MAX_ITERATIONS', '12'))       # tool-use loop cap
+AGENT_MAX_HISTORY = int(os.getenv('AGENT_MAX_HISTORY', '20'))             # per-chat memory cap
+AGENT_AUTO_COMPACT = os.getenv('AGENT_AUTO_COMPACT', 'true').lower() in ('true', '1', 'yes')
+AGENT_COMPACT_THRESHOLD = int(os.getenv('AGENT_COMPACT_THRESHOLD', '14'))
+
+# Model auto-selection: pick the cheapest model the gateway advertises
+AGENT_USE_CHEAPEST_MODEL = os.getenv('AGENT_USE_CHEAPEST_MODEL', 'false').lower() in ('true', '1', 'yes')
+AGENT_PRICING_API_URL = os.getenv(
+    'AGENT_PRICING_API_URL',
+    f'{AI_BASE_URL}/api/pricing' if AI_BASE_URL else '',
+)
+AGENT_MODEL_CACHE_TTL = int(os.getenv('AGENT_MODEL_CACHE_TTL', '3600'))
+
+# Shell access for the agent. Off by default: `.ask` prompts can embed text from
+# replied-to messages written by other people, so letting the model run commands
+# turns that text into an injection path. `.eval`/`.sh` stay available for the
+# owner to run commands directly.
+AGENT_ALLOW_SHELL = os.getenv('AGENT_ALLOW_SHELL', 'false').lower() in ('true', '1', 'yes')
 
 # Optional: YT_DLP API Key for YouTube downloads
 YT_DLP_API_KEY = os.getenv('YT_DLP_API_KEY', '')

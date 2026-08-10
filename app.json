@@ -27,8 +27,27 @@
       "description": "Optional: A Bot Token from @BotFather (used for inline bot features)",
       "required": false
     },
-    "GEMINI_API_KEY": {
-      "description": "Optional: Google Gemini API Key from https://aistudio.google.com/app/apikey (needed for AI features)",
+    "AI_API_KEY": {
+      "description": "Optional: AI gateway API key (needed for AI features: .ask and Word Grid vision)",
+      "required": false
+    },
+    "AI_BASE_URL": {
+      "description": "Base URL of your Anthropic-compatible AI gateway (e.g. https://api.example.com). Required alongside AI_API_KEY for the AI features.",
+      "required": false
+    },
+    "AGENT_MODEL": {
+      "description": "Optional: model used by .ask",
+      "value": "claude-opus-4-8",
+      "required": false
+    },
+    "AGENT_VISION_MODEL": {
+      "description": "Optional: vision-capable model used for Word Grid image extraction",
+      "value": "claude-opus-4-8",
+      "required": false
+    },
+    "AGENT_ALLOW_SHELL": {
+      "description": "Optional: let the AI agent run shell commands. Leave false unless you trust every message you .ask about — replied-to text is included in the prompt, so enabling this turns other people's messages into a path to command execution.",
+      "value": "false",
       "required": false
     },
     "GROUP": {

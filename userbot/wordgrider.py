@@ -10,14 +10,8 @@ from functools import lru_cache
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from tools import HARDCODED_PREFIXES
-from config import GEMINI_API_KEY
-from google import genai
-from PIL import Image
 from utils.message import Msg
-
-# ── Gemini Vision config ──
-GEMINI_MODEL = "gemini-2.0-flash"
-gemini_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+import ai_backend
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -312,14 +306,17 @@ def _ocr_cell(cell_gray) -> str:
     return "."
 
 
-def _extract_grid_gemini(image_path: str) -> list:
+def _extract_grid_vision(image_path: str) -> list:
     """
-    Use Google Gemini Vision to extract the letter grid directly.
-    Sends the full screenshot to Gemini and asks it to read every letter.
+    Use AI vision to extract the letter grid directly.
+    Sends the full screenshot to the model and asks it to read every letter.
     Returns list of row strings, e.g. ['SHOWSUBC', 'CORFEDDO', ...].
     """
+    if not ai_backend.is_configured():
+        logger.info("[GRID] No AI_API_KEY; skipping vision extraction")
+        return []
+
     try:
-        img = Image.open(image_path)
         prompt = (
             "This is a Word Grid puzzle screenshot. "
             "There is a grid of single letters inside colored cells. "
@@ -333,12 +330,8 @@ def _extract_grid_gemini(image_path: str) -> list:
             "QRSTUVWX\n"
             "..."
         )
-        response = gemini_client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=[prompt, img],
-        )
-        text = response.text.strip()
-        logger.info(f"[GRID] Gemini raw response:\n{text}")
+        text = ai_backend.vision_chat(image_path, prompt).strip()
+        logger.info(f"[GRID] Vision raw response:\n{text}")
 
         rows = []
         for line in text.split("\n"):
@@ -353,15 +346,15 @@ def _extract_grid_gemini(image_path: str) -> list:
             rows = [r for r in rows if len(r) == most_common]
             if len(rows) >= 5:
                 logger.info(
-                    f"[GRID] Gemini extracted {len(rows)}x{len(rows[0])} grid"
+                    f"[GRID] Vision extracted {len(rows)}x{len(rows[0])} grid"
                 )
                 return rows
 
-        logger.warning(f"[GRID] Gemini returned unusable result: {len(rows)} rows")
+        logger.warning(f"[GRID] Vision returned unusable result: {len(rows)} rows")
         return []
 
     except Exception as e:
-        logger.error(f"[GRID] Gemini extraction failed: {e}")
+        logger.error(f"[GRID] Vision extraction failed: {e}")
         return []
 
 
@@ -434,17 +427,17 @@ def _extract_grid_tesseract(image_path: str) -> list:
 def extract_grid_from_image(image_path: str) -> list:
     """
     Extract letter grid from a Word Grid screenshot.
-    Primary: Google Gemini Vision (free, highly accurate).
+    Primary: AI vision (highly accurate).
     Fallback: OpenCV + Tesseract (local, no API needed).
     """
-    # Try Gemini first
-    logger.info("[GRID] Trying Gemini Vision extraction...")
-    rows = _extract_grid_gemini(image_path)
+    # Try vision first
+    logger.info("[GRID] Trying AI vision extraction...")
+    rows = _extract_grid_vision(image_path)
     if rows:
         return rows
 
     # Fall back to Tesseract
-    logger.info("[GRID] Gemini failed, falling back to Tesseract...")
+    logger.info("[GRID] Vision failed, falling back to Tesseract...")
     return _extract_grid_tesseract(image_path)
 
 
@@ -605,7 +598,7 @@ async def solve_wordgrid(client: Client, message: Message):
         clues = parse_clues(caption)
         await m.edit(
             f"{Msg.EMOJI_SEARCH} **{len(clues)}** clues found. "
-            f"Extracting grid (Gemini Vision → Tesseract fallback)…"
+            f"Extracting grid (AI Vision → Tesseract fallback)…"
         )
 
         raw_rows = extract_grid_from_image(photo_path)
@@ -645,7 +638,7 @@ async def solve_wordgrid(client: Client, message: Message):
 
     except Exception as e:
         logger.error(f"Error processing WordGrid: {e}")
-        await m.edit(f"{Msg.EMOJI_ERROR} Error: {e}")
+        await m.edit(f"{Msg.EMOJI_ERROR} Error: {ai_backend.scrub(str(e))}")
     finally:
         if os.path.exists(photo_path):
             os.remove(photo_path)

@@ -17,8 +17,6 @@ opencv-python-headless==4.13.0.92
 yt-dlp[default]==2026.3.17
 pytesseract==0.3.13
 moviepy==1.0.3
-google-genai==1.75.0
-google-generativeai==0.8.5
 certifi==2026.1.4
 psutil==7.2.2
 speedtest-cli==2.1.3

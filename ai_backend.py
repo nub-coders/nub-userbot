@@ -406,8 +406,13 @@ def _clean_error(text):
     return _scrub(cleaned)
 
 
-def _post(messages, tools, model=None):
-    """Send one messages request, rotating through fallback models on rejection."""
+def _post(messages, tools, model=None, meta=None):
+    """Send one messages request, rotating through fallback models on rejection.
+
+    When `meta` is a dict, the model that actually answered is recorded under
+    ``model`` -- callers use it to show what served the request, which may not
+    be the model they asked for.
+    """
     model_to_use = model or get_active_model_name()
     payload = {
         "model": model_to_use,
@@ -433,6 +438,8 @@ def _post(messages, tools, model=None):
             continue
 
         if resp.status_code == 200:
+            if meta is not None:
+                meta["model"] = model_to_use
             return resp.json()
 
         last_err = f"AI gateway {resp.status_code}: {_clean_error(resp.text)}"
@@ -465,8 +472,14 @@ def _post(messages, tools, model=None):
     raise AgentError(last_err)
 
 
-def agent_answer(user_text, tools=None, impls=None, status_callback=None, chat_id=None, model=None):
-    """Run the tool-use loop for one user message with per-chat memory."""
+def agent_answer(user_text, tools=None, impls=None, status_callback=None, chat_id=None,
+                 model=None, meta=None):
+    """Run the tool-use loop for one user message with per-chat memory.
+
+    `meta`, if given, is filled in with details about the run -- currently
+    ``model``, the model that actually served it. `_post` rotates through the
+    fallback chain on rejection, so that is not necessarily the configured one.
+    """
     tools = tools if tools is not None else build_tools()
     impls = impls if impls is not None else build_tool_impls()
 
@@ -484,7 +497,7 @@ def agent_answer(user_text, tools=None, impls=None, status_callback=None, chat_i
             except Exception:
                 pass
 
-        data = _post(messages, tools, model=model)
+        data = _post(messages, tools, model=model, meta=meta)
         content = data.get("content", [])
         stop_reason = data.get("stop_reason")
 

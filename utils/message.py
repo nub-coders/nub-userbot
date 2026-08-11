@@ -251,7 +251,6 @@ class Msg:
     ERR_REPLY_IMAGE_DOC     = f'{ERROR_PREFIX}Reply To An Image/Document'
     ERR_PROVIDE_EVAL_CODE   = f'{ERROR_PREFIX}Provide Code To Evaluate'
     ERR_GCAST_NOTHING       = f'{ERROR_PREFIX}Nothing Given To Gcast'
-    ERR_CANT_DM_RAID_OWNER  = f'{ERROR_PREFIX}Cannot DM Raid The Owner'
     ERR_CANT_DM_SPAM_OWNER  = f'{ERROR_PREFIX}Cannot DM Spam The Owner'
     ERR_PRIVACY_HISTORY     = f'{ERROR_PREFIX}Unable To Retrieve History. User May Have Privacy Enabled.'
     ERR_GROUP_ONLY          = f'{ERROR_PREFIX}Group Only'
@@ -288,7 +287,6 @@ class Msg:
     OK_SETTINGS_SAVED       = f'{SUCCESS_PREFIX}Settings Saved'
     OK_JOIN_REQUESTS_DONE   = f'{SUCCESS_PREFIX}Join Requests Processed'
     OK_DM_SPAM_DONE         = f'{SUCCESS_PREFIX}DM Spam Done'
-    OK_DM_RAID_DONE         = f'{SUCCESS_PREFIX}DM Raid Done'
     OK_MSG_PINNED           = f'{SUCCESS_PREFIX}Message Pinned'
     OK_ALL_MSGS_UNPINNED    = f'{SUCCESS_PREFIX}All Messages Unpinned'
     OK_LATEST_PIN_UNPINNED  = f'{SUCCESS_PREFIX}Latest Pin Unpinned'
@@ -297,12 +295,8 @@ class Msg:
     OK_SUDO_GRANTED         = f'{SUCCESS_PREFIX}Sudo Granted'
     OK_SUDO_REVOKED         = f'{SUCCESS_PREFIX}Sudo Revoked'
     OK_JOIN_REQUESTS_EMPTY  = f'{SUCCESS_PREFIX}No Pending Join Requests'
-    OK_REPLY_RAID_ACTIVATED   = f'{SUCCESS_PREFIX}Reply Raid Activated'
-    OK_REPLY_RAID_DEACTIVATED = f'{SUCCESS_PREFIX}Reply Raid Deactivated'
 
     # ── Info ──────────────────────────────────────────────────────────────────
-    INFO_REPLY_RAID_ACTIVE  = f'{INFO_PREFIX}Reply Raid Already Active For This User'
-    INFO_NO_REPLY_RAID      = f'{INFO_PREFIX}No Reply Raid Active For This User'
     INFO_BLACKLIST_EMPTY    = f'{INFO_PREFIX}Blacklist Is Empty'
     INFO_NOT_IN_WHITELIST   = f'{INFO_PREFIX}Not In Whitelist'
     INFO_ALREADY_WHITELISTED= f'{INFO_PREFIX}Already In Whitelist'

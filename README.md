@@ -37,7 +37,6 @@ A feature-rich Telegram userbot built with Pyrogram, offering a wide range of au
 ### 🔧 Admin Tools
 - **User Management**: Approve/disapprove users, manage whitelists
 - **Spam Control**: Advanced spam detection and prevention
-- **Raid Protection**: Automated raid response system
 - **Message Management**: Bulk delete, purge, and moderate messages
 
 ### 🤖 AI Integration

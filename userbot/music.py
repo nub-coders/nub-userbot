@@ -94,12 +94,11 @@ def is_music_on():
         async def wrapper(client, message):
             try:
                 user_data = user_sessions.find_one({"user_id": client.me.id})
-                raid_control = user_data.get('music', False) if user_data else False
-                if raid_control:
-                    # User is in raid list, proceed with command
+                music_enabled = user_data.get('music', False) if user_data else False
+                if music_enabled:
                     return await func(client, message)
                 else:
-                    return  # Silent exit if not in raid list
+                    return  # Silent exit if music is off for this user
             except Exception as e:
                 logger.error(f"[MUSIC] is_music_on decorator error for user {client.me.id}: {e}")
                 return

@@ -161,26 +161,18 @@ def _pick_best_format(formats: list, *keys) -> dict | None:
 
 def pick_innertube_streams(streaming_data: dict) -> dict:
     """
-    Pick best muxed (audio+video, e.g. itag 18), adaptive audio, and adaptive video stream URLs.
+    Pick strictly from progressive Muxed streams (audio + video combined, e.g. formats array).
     """
     if not streaming_data:
-        return {"stream": None, "audio": None, "video": None}
+        return {"stream": None}
 
     formats = streaming_data.get("formats") or []
-    adaptive = streaming_data.get("adaptiveFormats") or []
-
-    audio_fmts = [f for f in adaptive if (f.get("mimeType") or "").startswith("audio/")]
-    video_fmts = [f for f in adaptive if (f.get("mimeType") or "").startswith("video/")]
-
     muxed = _pick_best_format(formats, "height", "bitrate")
-    best_audio = _pick_best_format(audio_fmts, "mp4", "bitrate") or muxed
-    best_video = _pick_best_format(video_fmts, "mp4", "height", "bitrate") or muxed
 
     return {
-        "stream": (muxed or {}).get("url") or (best_audio or {}).get("url"),
-        "audio": (best_audio or {}).get("url"),
-        "video": (best_video or {}).get("url"),
+        "stream": (muxed or {}).get("url"),
     }
+
 
 
 def resolve_innertube(argument: str) -> tuple[str, str, str, str, str, str, str, str] | None:

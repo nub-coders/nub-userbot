@@ -49,6 +49,23 @@ AGENT_MODEL_CACHE_TTL = int(os.getenv('AGENT_MODEL_CACHE_TTL', '3600'))
 # owner to run commands directly.
 AGENT_ALLOW_SHELL = os.getenv('AGENT_ALLOW_SHELL', 'false').lower() in ('true', '1', 'yes')
 
+# Moderation (ban/kick/mute/promote, deleting and pinning messages) for the
+# agent. Off by default for the same reason as AGENT_ALLOW_SHELL: `.ask` embeds
+# other people's message text into the prompt, so an armed moderation tool turns
+# that text into a way to get people removed. The tools also refuse to touch the
+# chat owner, other admins, or the userbot itself, and cap how many actions one
+# `.ask` run may take -- but the flag is the real gate.
+AGENT_ALLOW_MODERATION = os.getenv('AGENT_ALLOW_MODERATION', 'false').lower() in ('true', '1', 'yes')
+
+# The whole Telegram API for the agent: any Pyrogram client method, not just the
+# moderation subset. This is strictly more dangerous than AGENT_ALLOW_MODERATION
+# -- calling `ban_chat_member` directly goes around the owner/admin/self refusals
+# and the per-run action cap those tools apply, and it reaches every chat the
+# account is in, not only the one `.ask` ran in. Session- and account-ending
+# methods (log_out, cloud password, handlers, raw `invoke`) stay blocked either
+# way. Enable it only where you would hand the same person the account.
+AGENT_ALLOW_TELEGRAM_API = os.getenv('AGENT_ALLOW_TELEGRAM_API', 'false').lower() in ('true', '1', 'yes')
+
 # Optional: YT_DLP API Key for YouTube downloads
 YT_DLP_API_KEY = os.getenv('YT_DLP_API_KEY', '')
 

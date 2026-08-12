@@ -12,9 +12,14 @@ from pyrogram.types import Message
 
 import ai_backend
 from ai_backend import split_message
-from config import HARDCODED_PREFIXES, AGENT_ALLOW_SHELL
+from config import (
+    HARDCODED_PREFIXES,
+    AGENT_ALLOW_MODERATION,
+    AGENT_ALLOW_SHELL,
+    AGENT_ALLOW_TELEGRAM_API,
+)
 from tools import retry, edit_or_reply, styled_error
-from userbot.ai_telegram_tools import TOOL_SCHEMAS, build_telegram_tools
+from userbot.ai_telegram_tools import build_tool_schemas, build_telegram_tools
 
 logger = logging.getLogger("userbot.ai_agent")
 
@@ -148,9 +153,17 @@ async def ask_handler(client: Client, message: Message):
             asyncio.to_thread(
                 ai_backend.agent_answer,
                 query,
-                ai_backend.build_tools() + TOOL_SCHEMAS,
+                ai_backend.build_tools()
+                + build_tool_schemas(
+                    allow_moderation=AGENT_ALLOW_MODERATION,
+                    allow_api=AGENT_ALLOW_TELEGRAM_API,
+                ),
                 ai_backend.build_tool_impls(
-                    extra_tools=build_telegram_tools(client, message, loop)
+                    extra_tools=build_telegram_tools(
+                        client, message, loop,
+                        allow_moderation=AGENT_ALLOW_MODERATION,
+                        allow_api=AGENT_ALLOW_TELEGRAM_API,
+                    )
                 ),
                 status_callback,
                 message.chat.id,
@@ -235,6 +248,8 @@ async def ask_model_handler(client: Client, message: Message):
         price = "N/A"
 
     shell_state = "enabled ⚠️" if AGENT_ALLOW_SHELL else "disabled 🔒"
+    moderation_state = "enabled ⚠️" if AGENT_ALLOW_MODERATION else "disabled 🔒"
+    api_state = "enabled ⚠️" if AGENT_ALLOW_TELEGRAM_API else "disabled 🔒"
 
     await _safe_edit(
         status,
@@ -242,6 +257,8 @@ async def ask_model_handler(client: Client, message: Message):
         f"• **Model:** `{info.get('model')}`\n"
         f"• **Selection:** {mode}\n"
         f"• **Pricing:** {price}\n"
-        f"• **Shell tool:** {shell_state}\n\n"
+        f"• **Shell tool:** {shell_state}\n"
+        f"• **Moderation tools:** {moderation_state}\n"
+        f"• **Full Telegram API:** {api_state}\n\n"
         "💡 Use `.askmodel refresh` to re-query pricing.",
     )

@@ -115,6 +115,8 @@ All configuration is done through environment variables (or a `.env` file). See 
 - `AGENT_VISION_MODEL` — vision-capable model for image requests (default `claude-opus-4-8`)
 - `AI_BASE_URL` — base URL of your Anthropic-compatible gateway; required alongside `AI_API_KEY`
 - `AGENT_ALLOW_SHELL` — lets the agent run shell commands (default `false`; see the warning under AI Agent Commands)
+- `AGENT_ALLOW_MODERATION` — lets the agent ban/kick/mute/promote members and delete or pin messages (default `false`; same warning)
+- `AGENT_ALLOW_TELEGRAM_API` — lets the agent call *any* Telegram client method, not just moderation (default `false`; **supersedes** the moderation guards — see the warning under AI Agent Commands)
 - `YT_DLP_API_KEY` / `YT_DLP_BASE_URL` — YouTube download service configuration
 - `MONGO_URI` / `DB_NAME` — MongoDB for persistent storage; leave `MONGO_URI` empty to use in-memory storage (data is lost on restart)
 - `GROUP` / `CHANNEL` — your support group and updates channel usernames (without @)
@@ -153,11 +155,15 @@ All configuration is done through environment variables (or a `.env` file). See 
 - `.power <type>` - Promote users with permissions
 
 ### AI Commands
-- `.ask <question>` - Ask the agent; it can search the web, read files, and search the codebase before answering. Reply to a message to pass it along as context.
+- `.ask <question>` - Ask the agent; it can search the web, read files, search the codebase, inspect the current chat, and identify a member from a @handle, an ID, or a stylized display name before answering. Reply to a message to pass it along as context.
 - `.askclear` - Forget the agent's conversation memory for this chat (`.askreset` also works)
-- `.askmodel [refresh]` - Show the active model, how it was selected, and its pricing
+- `.askmodel [refresh]` - Show the active model, how it was selected, its pricing, and whether the shell, moderation, and full-API tools are armed
 
 > Requires `AI_API_KEY` and `AI_BASE_URL`. The agent's shell tool is **off by default** — `.ask` can embed text from other people's messages into the prompt, so enabling `AGENT_ALLOW_SHELL=true` turns that text into a command-injection path. Use `.eval` / `.sh` to run commands yourself instead.
+>
+> Moderation is off by default for the same reason. With `AGENT_ALLOW_MODERATION=true` the agent can ban, unban, kick, mute, unmute, promote, demote, and set admin titles, and delete or pin the replied-to message — so a message asking to be banned becomes an attack. Even armed, the tools work only in groups where the userbot already holds the matching admin right, never touch the chat owner or the userbot's own account, refuse to ban/kick/mute another admin, never grant `can_promote_members`, stop after 10 actions per `.ask`, and log every attempt as `[ask-moderation]`. Use `.ban` / `.mute` / `.promote` yourself if you would rather decide each one.
+>
+> `AGENT_ALLOW_TELEGRAM_API=true` goes further and lets the agent call *any* Telegram client method by name — the whole Pyrogram API, not just moderation. This **supersedes** the moderation guards rather than adding to them: a raw `ban_chat_member` call bypasses the owner/admin/self refusals and the 10-action cap, and it can act on **any chat the account is in**, not only the one `.ask` ran in. What it keeps is a per-run call budget, a result-size cap, an audit line (`[ask-api]`) per call, and a hard block on session-, login-, lifecycle-, raw-invoke-, and host-file methods. Treat this as equivalent to handing that person the account, and leave it off unless you mean to.
 
 ## ⭐ Telegram Premium Features
 

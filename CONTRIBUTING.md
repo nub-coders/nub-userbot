@@ -40,7 +40,7 @@ python3 main.py
 │   ├── admin.py         Admin tools
 │   ├── ai_agent.py      Agentic AI assistant (.ask)
 │   ├── clone.py         Profile cloning
-│   └── ...              (afk, eval, font, forward, etc.)
+│   └── ...              (afk, eval, forward, stickers, etc.)
 ├── bot/                 Bot-mode features (inline, downloader)
 ├── utils/               Shared helpers
 ├── ruff.toml            Lint configuration

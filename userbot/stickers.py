@@ -4,6 +4,7 @@ import requests
 import base64
 import asyncio
 import os
+import io
 import logging
 import re
 from typing import Any, Dict, List, Optional
@@ -713,8 +714,14 @@ async def build_user_info(client, user) -> Optional[Dict[str, Any]]:
 
             photo = {}
             if photo_path and os.path.exists(photo_path):
-                with open(photo_path, "rb") as f:
-                    photo["base64"] = base64.b64encode(f.read()).decode('utf-8')
+                try:
+                    with Image.open(photo_path) as img:
+                        img_byte_arr = io.BytesIO()
+                        img.save(img_byte_arr, format='PNG')
+                        photo["base64"] = base64.b64encode(img_byte_arr.getvalue()).decode('utf-8')
+                except Exception:
+                    with open(photo_path, "rb") as f:
+                        photo["base64"] = base64.b64encode(f.read()).decode('utf-8')
                 os.remove(photo_path)
             if file_id:
                 photo["_file_id"] = file_id
@@ -888,11 +895,21 @@ async def get_media_info(client, message) -> Optional[Dict[str, Any]]:
         logger.debug(f"[DEBUG] Media downloaded to: {temp_file_path}")
 
         # Convert to base64, keeping the file id for endpoints that resolve it
-        # themselves (see _shape_payload).
+        # themselves (see _shape_payload). Convert images to PNG format for
+        # maximum compatibility with quote API canvas engines (e.g. WebP sticker previews).
         if temp_file_path and os.path.exists(temp_file_path):
-            with open(temp_file_path, "rb") as image_file:
-                base64_data = base64.b64encode(image_file.read()).decode('utf-8')
-            logger.debug(f"[DEBUG] Media thumbnail converted to base64 successfully")
+            base64_data = None
+            try:
+                with Image.open(temp_file_path) as img:
+                    img_byte_arr = io.BytesIO()
+                    img.save(img_byte_arr, format='PNG')
+                    base64_data = base64.b64encode(img_byte_arr.getvalue()).decode('utf-8')
+            except Exception as e:
+                logger.debug(f"[DEBUG] Image conversion to PNG failed ({e}), reading raw file")
+                with open(temp_file_path, "rb") as image_file:
+                    base64_data = base64.b64encode(image_file.read()).decode('utf-8')
+
+            logger.debug("[DEBUG] Media thumbnail converted to base64 successfully")
             return {"base64": base64_data, "_file_id": thumbnail_file_id}
         else:
             logger.debug("[DEBUG] Failed to download thumbnail; falling back to file_id only")

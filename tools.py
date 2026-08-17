@@ -325,8 +325,6 @@ DEFAULT_COMMANDS = {
     'game': '**Game Toggle** - Toggle word chain autoplay.\n\n**Usage:** `[prefix]game`',
     'solver': '**Game Solver** - Solve word search puzzles.\n\n**Usage:** `[prefix]solver`',
     'wc': '**Word Chain** - Play word chain game.\n\n**Usage:** `[prefix]wc [word]`',
-    'font': '**Apply Font** - Apply custom font style.\n\n**Usage:** `[prefix]font <style> <text>`',
-    'fonts': '**Font List** - List available font styles.\n\n**Usage:** `[prefix]fonts`',
     'eval': '**Execute Code** - Evaluate Python expression.\n\n**Usage:** `[prefix]eval <code>`',
     'sh': '**Run Shell** - Execute bash command.\n\n**Usage:** `[prefix]sh <cmd>`',
     'plugins': '**List Plugins** - View loaded extra plugins.\n\n**Usage:** `[prefix]plugins`',
@@ -337,7 +335,6 @@ DEFAULT_COMMANDS = {
     'unbanall': '**Unban All** - Unban all banned users in group.\n\n**Usage:** `[prefix]unbanall`',
     'inv': '**Invite User** - Invite user to current chat.\n\n**Usage:** `[prefix]inv [user]`',
     'invite2vc': '**Invite to VC** - Invite chat members to voice call.\n\n**Usage:** `[prefix]invite2vc`',
-    'admins': '**List Admins** - List all group administrators.\n\n**Usage:** `[prefix]admins`',
     'id': '**Get Chat ID** - Get ID of current chat or replied user.\n\n**Usage:** `[prefix]id [reply]`',
     'leave': '**Leave Group** - Leave current group chat.\n\n**Usage:** `[prefix]leave`',
     'song': '**Download Song** - Search and download audio track.\n\n**Usage:** `[prefix]song <query>`',
@@ -377,7 +374,7 @@ DEFAULT_COMMANDS = {
 DEFAULT_CATEGORIES = {
     'ℹ️ INFO': ['alive', 'ping', 'stats', 'info', 'status', 'sessions', 'setalivetext', 'setemoji', 'resetallalive'],
     '🛡️ ADMIN': ['ban', 'unban', 'kick', 'mute', 'unmute', 'pin', 'unpin', 'promote', 'demote', 'tagall', 'power', 'banall', 'unbanall'],
-    '👥 GROUPS': ['inv', 'invite2vc', 'admins', 'id', 'leave'],
+    '👥 GROUPS': ['inv', 'invite2vc', 'id', 'leave'],
     '🎵 MUSIC': ['play', 'vplay', 'playforce', 'vplayforce', 'pause', 'resume', 'skip', 'end', 'loop', 'queue', 'song', 'video', 'music', 'vc1', 'vc0'],
     '🤖 AI CHAT': ['ask', 'askclear', 'askmodel', 'imagine'],
     '🖼️ MEDIA': ['qt', 'kang', 'tiny', 'mmf', 'ocr', 'packinfo', 'stickerinfo'],
@@ -388,7 +385,7 @@ DEFAULT_CATEGORIES = {
     '⚡ SPAM': ['spam', 'dspam', 'cspam', 'dmspam', 'gcast', 'schedule', 'schedules'],
     '👋 WELCOME': ['setwelkm', 'resetwelkm', 'react', 'autoreact'],
     '🎮 GAMES': ['game', 'solver', 'wc', 'resetwords', 'grid', 'solvegrid', 'wordseek', 'gameinfo'],
-    '💻 DEVELOPER': ['font', 'fonts', 'eval', 'sh', 'exec', 'plugins', 'update'],
+    '💻 DEVELOPER': ['eval', 'sh', 'exec', 'plugins', 'update'],
 }
 
 commands = dict(DEFAULT_COMMANDS)
@@ -687,8 +684,7 @@ async def format_welcome_message(client, text, chat_id, user_or_chat_name):
 
 # Font formatting utility
 def bold_cool(text):
-    from fonts import bold_cool as font_bold_cool
-    return font_bold_cool(text)
+    return text
 
 # Common filter utilities
 def create_channel_custom_filter():

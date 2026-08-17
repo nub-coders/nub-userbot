@@ -695,14 +695,15 @@ async def build_user_info(client, user) -> Optional[Dict[str, Any]]:
             os.makedirs(user_dir, exist_ok=True)
 
             if hasattr(user, 'photo') and user.photo:
-                if hasattr(user.photo, 'big_file_id') and user.photo.big_file_id:
-                    file_id = user.photo.big_file_id
-                elif hasattr(user.photo, 'small_file_id') and user.photo.small_file_id:
-                    file_id = user.photo.small_file_id
+                big_id = getattr(user.photo, 'big_file_id', None)
+                small_id = getattr(user.photo, 'small_file_id', None)
+                file_id = big_id or small_id
+                # Prefer downloading small_file_id (160x160) for speed and bandwidth
+                download_id = small_id or big_id
 
-                if file_id:
+                if download_id:
                     try:
-                        photo_path = await client.download_media(file_id, file_name=f"{user_dir}/")
+                        photo_path = await client.download_media(download_id, file_name=f"{user_dir}/")
                     except Exception as e:
                         logger.debug(f"Failed to download photo via file_id: {e}")
 
@@ -716,13 +717,18 @@ async def build_user_info(client, user) -> Optional[Dict[str, Any]]:
             if photo_path and os.path.exists(photo_path):
                 try:
                     with Image.open(photo_path) as img:
+                        if img.mode in ('P', 'CMYK', 'LA'):
+                            img = img.convert('RGBA')
+                        # Avatars in quotes render as small circles; downscale to max 128x128
+                        img.thumbnail((128, 128), getattr(Image, 'Resampling', Image).LANCZOS)
                         img_byte_arr = io.BytesIO()
-                        img.save(img_byte_arr, format='PNG')
+                        img.save(img_byte_arr, format='PNG', optimize=True)
                         photo["base64"] = base64.b64encode(img_byte_arr.getvalue()).decode('utf-8')
-                except Exception:
-                    with open(photo_path, "rb") as f:
-                        photo["base64"] = base64.b64encode(f.read()).decode('utf-8')
-                os.remove(photo_path)
+                except Exception as e:
+                    logger.debug(f"Failed to process user avatar with PIL: {e}")
+                finally:
+                    if os.path.exists(photo_path):
+                        os.remove(photo_path)
             if file_id:
                 photo["_file_id"] = file_id
             if photo:
@@ -861,10 +867,6 @@ async def get_media_info(client, message) -> Optional[Dict[str, Any]]:
         # 3) Safe fallback to original file for static image-like types only
         if not thumbnail_file_id and media_attr in ['photo', 'sticker']:
             thumbnail_file_id = getattr(media_attribute, 'file_id', None)
-
-        # 4) Last-resort fallback for other types if no thumb exists
-        if not thumbnail_file_id:
-            thumbnail_file_id = getattr(media_attribute, 'file_id', None)
                 
         if thumbnail_file_id:
             logger.debug(f"[DEBUG] Thumbnail file_id found: {thumbnail_file_id}")
@@ -897,20 +899,26 @@ async def get_media_info(client, message) -> Optional[Dict[str, Any]]:
         # Convert to base64, keeping the file id for endpoints that resolve it
         # themselves (see _shape_payload). Convert images to PNG format for
         # maximum compatibility with quote API canvas engines (e.g. WebP sticker previews).
+        # Resize to max 512x512 to prevent bloated payloads (>1MB).
         if temp_file_path and os.path.exists(temp_file_path):
             base64_data = None
             try:
                 with Image.open(temp_file_path) as img:
+                    if img.mode in ('P', 'CMYK', 'LA'):
+                        img = img.convert('RGBA')
+                    img.thumbnail((512, 512), getattr(Image, 'Resampling', Image).LANCZOS)
                     img_byte_arr = io.BytesIO()
-                    img.save(img_byte_arr, format='PNG')
+                    img.save(img_byte_arr, format='PNG', optimize=True)
                     base64_data = base64.b64encode(img_byte_arr.getvalue()).decode('utf-8')
             except Exception as e:
-                logger.debug(f"[DEBUG] Image conversion to PNG failed ({e}), reading raw file")
-                with open(temp_file_path, "rb") as image_file:
-                    base64_data = base64.b64encode(image_file.read()).decode('utf-8')
+                logger.debug(f"[DEBUG] Image processing to PNG failed ({e})")
 
-            logger.debug("[DEBUG] Media thumbnail converted to base64 successfully")
-            return {"base64": base64_data, "_file_id": thumbnail_file_id}
+            if base64_data:
+                logger.debug("[DEBUG] Media thumbnail converted to base64 successfully")
+                return {"base64": base64_data, "_file_id": thumbnail_file_id}
+            else:
+                logger.debug("[DEBUG] Could not convert media thumbnail to base64; returning file_id only")
+                return {"_file_id": thumbnail_file_id}
         else:
             logger.debug("[DEBUG] Failed to download thumbnail; falling back to file_id only")
             return {"_file_id": thumbnail_file_id}

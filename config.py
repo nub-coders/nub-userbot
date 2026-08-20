@@ -66,11 +66,11 @@ AGENT_ALLOW_MODERATION = os.getenv('AGENT_ALLOW_MODERATION', 'false').lower() in
 # way. Enable it only where you would hand the same person the account.
 AGENT_ALLOW_TELEGRAM_API = os.getenv('AGENT_ALLOW_TELEGRAM_API', 'false').lower() in ('true', '1', 'yes')
 
-# Optional: YT_DLP API Key for YouTube downloads
-YT_DLP_API_KEY = os.getenv('YT_DLP_API_KEY', '')
+# Optional: YTUBE API Key for YouTube downloads
+YTUBE_API_KEY = os.getenv('YTUBE_API_KEY', '')
 
-# YT_DLP Base URL configuration
-YT_DLP_BASE_URL = os.getenv('YT_DLP_BASE_URL', 'https://api.nubcoders.com')
+# YTUBE Base URL configuration
+YTUBE_BASE_URL = os.getenv('YTUBE_BASE_URL', 'https://api.nubcoders.com')
 
 # MongoDB connection (optional)
 # Leave MONGO_URI empty to run fully in-memory (data is lost on restart).

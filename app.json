@@ -60,12 +60,12 @@
       "value": "nub_coders",
       "required": false
     },
-    "YT_DLP_API_KEY": {
-      "description": "Optional: API Key for YT_DLP to download YouTube videos",
+    "YTUBE_API_KEY": {
+      "description": "Optional: API Key for YTUBE to download YouTube videos",
       "required": false
     },
-    "YT_DLP_BASE_URL": {
-      "description": "Optional: Base URL for YT_DLP API (defaults to https://api.nubcoders.com)",
+    "YTUBE_BASE_URL": {
+      "description": "Optional: Base URL for YTUBE API (defaults to https://api.nubcoders.com)",
       "value": "https://api.nubcoders.com",
       "required": false
     },

@@ -117,7 +117,7 @@ All configuration is done through environment variables (or a `.env` file). See 
 - `AGENT_ALLOW_SHELL` — lets the agent run shell commands (default `false`; see the warning under AI Agent Commands)
 - `AGENT_ALLOW_MODERATION` — lets the agent ban/kick/mute/promote members and delete or pin messages (default `false`; same warning)
 - `AGENT_ALLOW_TELEGRAM_API` — lets the agent call *any* Telegram client method, not just moderation (default `false`; **supersedes** the moderation guards — see the warning under AI Agent Commands)
-- `YT_DLP_API_KEY` / `YT_DLP_BASE_URL` — YouTube download service configuration
+- `YTUBE_API_KEY` / `YTUBE_BASE_URL` — YouTube download service configuration
 - `MONGO_URI` / `DB_NAME` — MongoDB for persistent storage; leave `MONGO_URI` empty to use in-memory storage (data is lost on restart)
 - `GROUP` / `CHANNEL` — your support group and updates channel usernames (without @)
 

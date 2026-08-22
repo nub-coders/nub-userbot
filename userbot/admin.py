@@ -454,17 +454,21 @@ async def accept_join_requests(client, message):
                 failed_count += 1
         
         if accepted_count == 0 and failed_count == 0:
-            await USERBOT.edit("No pending join requests")
+            await USERBOT.edit(f"<b>{Msg.EMOJI_INFO} Join Requests</b>\n\n<blockquote>No pending join requests found in this chat.</blockquote>")
         else:
-            await USERBOT.edit(
-                f"{Msg.OK_JOIN_REQUESTS_DONE}\n\n"
-                f"┃ ✅ Accepted: {accepted_count}\n"
-                f"┃ ❌ Failed: {failed_count}\n"
-                f"╰━━━━━━━━━━━━━━━━━━━━╯"
+            result_text = (
+                f"<b>{Msg.EMOJI_SUCCESS} Join Requests Approved</b>\n\n"
+                f"<blockquote>\n"
+                f"<b>• Approved:</b> {accepted_count}\n"
+                f"<b>• Failed:</b> {failed_count}\n"
+                f"</blockquote>"
             )
-            
+            await USERBOT.edit(result_text)
+
+
     except Exception as e:
         await USERBOT.edit(styled_error(f"Error: {e}"))
+
 
 
 

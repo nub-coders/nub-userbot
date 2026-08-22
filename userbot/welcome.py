@@ -4,8 +4,10 @@ import base64
 import re
 from pyrogram import Client, filters
 from tools import *
+from utils.message import Msg
 import magic
 import logging
+
 
 logger = logging.getLogger("welcome")
 mime = magic.Magic(mime=True)
@@ -31,24 +33,18 @@ async def set_welcome_handler(client, message):
 
         replied_msg = message.reply_to_message
         if not replied_msg:
-            usage_text = (
-                "Please reply to a message to set it as welcome message.\n\n"
-                "You can set:\n"
-                "• Text message\n"
-                "• Media (photo/video/gif/sticker)\n"
-                "• Media with caption\n\n"
-                "Available placeholders:\n"
-                "• {name} - User's name\n"
-                "• {id} - User's ID\n"
-                "• {yourname} - Your name\n\n"
-                "Size limits:\n"
-                "• Text: Maximum 4096 characters\n"
-                "• Media: Maximum 5MB\n\n"
-                "Example usage:\n"
-                "• 'Welcome {name}! Your ID is {id}'\n"
-                "• Reply to a photo/video with caption 'Welcome to {botname}!'"
+            usage_guide = (
+                f"<b>{Msg.EMOJI_WAVE} Welcome Message Configuration</b>\n\n"
+                f"<blockquote>\n"
+                f"<b>• <code>{{name}}</code>:</b> Recipient user full name\n"
+                f"<b>• <code>{{id}}</code>:</b> Recipient user Telegram ID\n"
+                f"<b>• <code>{{botname}}</code>:</b> Userbot owner display name\n"
+                f"</blockquote>\n\n"
+                f"<i>Reply to any text or media message with <code>.setwelkm</code> to configure your DM greeting. Maximum media size: 5MB.</i>"
             )
-            return await message.reply_text(usage_text)
+            return await message.reply_text(usage_guide, parse_mode=enums.ParseMode.HTML)
+
+
 
         updates = []
 

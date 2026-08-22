@@ -5,6 +5,7 @@ import datetime
 import pytz
 from config import *
 from tools import *
+from utils.message import Msg
 
 # Command handler for scheduling messages
 @Client.on_message(filters.me & filters.command('schedule', prefixes=HARDCODED_PREFIXES))
@@ -93,15 +94,21 @@ async def schedule_message(client: Client, message: Message):
         else:
             formatted_time = scheduled_time.strftime("%d-%m-%Y %H:%M:%S")
         
-        # Send confirmation with timezone information
-        await message.reply(
-            f"✅ **Message scheduled!**\n"
-            f"📝 To: `{target}`\n"
-            f"🕒 Your message will be sent at: `{mess.date}`\n"
-            f"⏰ System timezone: `{system_timezone_name}`\n"
-            f"📃 Message: `{msg_content[:30]}{'...' if len(msg_content) > 30 else ''}`"
+        # Send confirmation with standard MTProto HTML blockquote
+        content_preview = (msg_content[:35] + '…') if len(msg_content) > 35 else msg_content
+        schedule_html = (
+            f"<b>{Msg.EMOJI_CALENDAR} Message Scheduled</b>\n\n"
+            f"<blockquote>\n"
+            f"<b>• Target:</b> <code>{target}</code>\n"
+            f"<b>• Scheduled Time:</b> <code>{mess.date}</code>\n"
+            f"<b>• Timezone:</b> {system_timezone_name}\n"
+            f"<b>• Content:</b> {content_preview}\n"
+            f"</blockquote>"
         )
-        
+        await message.reply(schedule_html, parse_mode=enums.ParseMode.HTML)
+
+
     except Exception as e:
-        await message.reply(f"❌ **Failed to schedule message!**\n⚠️ Error: `{str(e)}`")
+        await message.reply(styled_error(f"Failed to schedule message: {e}"))
+
 

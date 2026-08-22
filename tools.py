@@ -156,14 +156,36 @@ async def edit_or_reply(message, text, **kwargs):
     return await message.reply(text, **kwargs)
 
 
-def styled_error(text):
-    """Format an error message."""
-    return f"❌ **Error**\n\n⚠️ {text}"
+def styled_error(text, details="", hint=""):
+    """Format an error message with standard MTProto HTML typography."""
+    parts = [
+        "<b>❌ Error</b>",
+        f"<blockquote>{text}</blockquote>"
+    ]
+    if details:
+        parts.append(f"<blockquote expandable><b>Technical Details:</b>\n<code>{details}</code></blockquote>")
+    if hint:
+        parts.append(f"💡 <i>{hint}</i>")
+    return "\n\n".join(parts)
 
 
-def styled_success(text):
-    """Format a success message."""
-    return f"✅ {text}"
+def styled_success(text, details="", table_headers=None, table_rows=None):
+    """Format a success message with standard MTProto HTML."""
+    parts = [
+        "<b>✅ Success</b>",
+        f"<blockquote>{text}</blockquote>"
+    ]
+    if table_rows:
+        row_lines = []
+        for row in table_rows:
+            if table_headers and len(table_headers) == len(row):
+                row_lines.append(" • " + " | ".join(f"<b>{h}:</b> {c}" for h, c in zip(table_headers, row)))
+            else:
+                row_lines.append(" • " + " | ".join(str(c) for c in row))
+        parts.append("<blockquote>" + "\n".join(row_lines) + "</blockquote>")
+    if details:
+        parts.append(f"<blockquote expandable><b>Additional Info:</b>\n{details}</blockquote>")
+    return "\n\n".join(parts)
 
 
 def can_grant_privilege(promoter_privileges, privilege_name):
@@ -172,33 +194,48 @@ def can_grant_privilege(promoter_privileges, privilege_name):
 
 
 def styled_help_categories(categories_dict, prefix):
-    """Format help categories overview."""
-    lines = ["📖 **Command Categories**\n"]
+    """Format help categories overview using standard MTProto HTML."""
+    lines = []
     for cat, cmds in categories_dict.items():
         if cmds:
-            cmd_list = ", ".join(f"`{prefix}{c}`" for c in cmds[:5])
-            extra = f" +{len(cmds)-5} more" if len(cmds) > 5 else ""
-            lines.append(f"**{cat}**\n┃ {cmd_list}{extra}")
+            sample = ", ".join(f"<code>{prefix}{c}</code>" for c in cmds[:4])
+            count = len(cmds)
+            lines.append(f"<b>• {cat}</b> ({count}): {sample}")
         else:
-            lines.append(f"**{cat}**")
-    lines.append(f"\n💡 Use `{prefix}help <command>` for details")
-    return "\n".join(lines)
+            lines.append(f"<b>• {cat}</b>: <i>empty</i>")
+
+    return (
+        "<b>📖 Command Categories</b>\n\n"
+        f"<blockquote>{chr(10).join(lines)}</blockquote>\n\n"
+        f"💡 <i>Use <code>{prefix}help &lt;command&gt;</code> for detailed instructions.</i>"
+    )
 
 
 def styled_help_card(cmd, desc, usage, example="", note="", flags="", warning=""):
-    """Format a single command help card."""
-    card = f"📖 **{cmd}**\n\n{desc}\n"
+    """Format a single command help card using standard MTProto HTML."""
+    parts = [
+        f"<b>📖 <code>{cmd}</code></b>",
+        f"{desc}"
+    ]
     if usage:
-        card += f"\n**Usage:** `{usage}`"
+        parts.append(f"<blockquote><b>Usage:</b> <code>{usage}</code></blockquote>")
+
+    details = []
     if example:
-        card += f"\n**Example:** `{example}`"
+        details.append(f"<b>• Example:</b> <code>{example}</code>")
     if flags:
-        card += f"\n**Flags:** {flags}"
+        details.append(f"<b>• Flags:</b> <code>{flags}</code>")
     if note:
-        card += f"\n💡 {note}"
+        details.append(f"💡 <b>Note:</b> {note}")
     if warning:
-        card += f"\n⚠️ {warning}"
-    return card
+        details.append(f"⚠️ <b>Warning:</b> {warning}")
+
+    if details:
+        parts.append("<blockquote expandable><b>Options & Details:</b>\n" + "\n".join(details) + "</blockquote>")
+
+    return "\n\n".join(parts)
+
+
 
 
 def update_message_and_entities(text, entities, words_to_remove=None):

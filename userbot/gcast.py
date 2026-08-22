@@ -96,12 +96,26 @@ async def gcast_handler(client, message):
 
 
         UwU = sed + owo
-        omk = {"-all": "Chats", "-pvt": "PM", "-grp": "Groups"}.get(flag, "Chats") # More concise mapping
-        text_to_send = f"📍 Sent in : {owo} {omk}\n📍 Failed in : {sed} {omk}\n📍Skipped in blocked chats : {bl}\n📍 Total : {UwU} {omk}"
-        await message.edit(f"Gcast Executed Successfully !! \n\n{text_to_send}")
-        await client.send_message(app.me.id, f"#GCAST #{flag[1:].upper()} \n\n{text_to_send}")
+        omk = {"-all": "Chats", "-pvt": "PMs", "-grp": "Groups"}.get(flag, "Chats")
+        rate = (owo / UwU * 100) if UwU else 0
 
-    except IndexError: # Catches errors if the user didn't give enough arguments.
-        await message.edit("Usage: /gcast [-all|-pvt|-grp] [message/reply]")
+        result_text = (
+            f"<b>📢 Broadcast Completed</b>\n\n"
+            f"<blockquote>\n"
+            f"<b>• Target Scope:</b> {omk} (<code>{flag}</code>)\n"
+            f"<b>• Delivered:</b> {owo}\n"
+            f"<b>• Failed:</b> {sed}\n"
+            f"<b>• Skipped (Blacklisted):</b> {bl}\n"
+            f"<b>• Total Processed:</b> {UwU}\n"
+            f"<b>• Success Rate:</b> {rate:.1f}%\n"
+            f"</blockquote>"
+        )
+        await message.edit(result_text, parse_mode=enums.ParseMode.HTML)
+        await client.send_message(app.me.id, f"#GCAST #{flag[1:].upper()} \n\nDelivered: {owo} | Failed: {sed} | Total: {UwU}")
+
+
+    except IndexError:
+        await message.edit(styled_error("Missing arguments", hint="Usage: <code>/gcast [-all|-pvt|-grp] [message/reply]</code>"), parse_mode=enums.ParseMode.HTML)
     except Exception as e:
-        await message.edit(f"An unexpected error occurred. Please check the logs.")
+        await message.edit(styled_error(f"Broadcast failed: {e}"), parse_mode=enums.ParseMode.HTML)
+

@@ -452,25 +452,69 @@ class Msg:
         return f"<code>{text}</code>"
 
     @staticmethod
-    def section(title: str, body: str, emoji: str = PIN) -> str:
-        """
-        Section header block.
-        Uses Gothic (CatUserBot style) for the title.
+    def rich_table(headers: list, rows: list, border: int = 1) -> str:
+        """Render a clean structured block for key-value / tabular data across all clients."""
+        lines = []
+        for row in rows:
+            if headers and len(headers) == len(row):
+                lines.append(" • " + " | ".join(f"<b>{h}:</b> {c}" for h, c in zip(headers, row)))
+            else:
+                lines.append(" • " + " | ".join(str(c) for c in row))
+        return "<blockquote>\n" + "\n".join(lines) + "\n</blockquote>"
 
-             📌 𝕊𝕖𝕔𝕥𝕚𝕠𝕟 𝕋𝕚𝕥𝕝𝕖
-             ├ body line 1
-             └ body line 2
-        """
-        styled_title = font.double(title)
-        return f"{emoji} <b>{styled_title}</b>\n{body}"
+    @staticmethod
+    def details_section(summary: str, content: str, open_by_default: bool = False) -> str:
+        """Render an expandable quote section (<blockquote expandable>...)."""
+        return f"<blockquote expandable>\n<b>{summary}:</b>\n\n{content}\n</blockquote>"
+
+    @staticmethod
+    def rich_error(title: str, message: str, hint: str = "", details: str = "") -> str:
+        """Render a structured error message with standard MTProto HTML."""
+        parts = [f"<b>{Msg.EMOJI_ERROR} {title}</b>", f"<blockquote>\n{message}\n</blockquote>"]
+        if details:
+            parts.append(f"<blockquote expandable>\n<b>Error Details:</b>\n\n<code>{details}</code>\n</blockquote>")
+        if hint:
+            parts.append(f"💡 <i>{hint}</i>")
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def rich_success(title: str, message: str, table_headers: list = None, table_rows: list = None, details: str = "") -> str:
+        """Render a structured success message with standard MTProto HTML."""
+        parts = [f"<b>{Msg.EMOJI_SUCCESS} {title}</b>", f"<blockquote>\n{message}\n</blockquote>"]
+        if table_rows:
+            parts.append(Msg.rich_table(table_headers or [], table_rows))
+        if details:
+            parts.append(f"<blockquote expandable>\n<b>Additional Info:</b>\n\n{details}\n</blockquote>")
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def rich_card(title: str, lines, emoji: str = PIN, details: str = "", footer: str = "") -> str:
+        """Build a modern HTML card using standard MTProto tags."""
+        body_lines = []
+        for line in lines:
+            if line:
+                body_lines.append(f"┃ {line}")
+        if footer:
+            body_lines.append(f"╰▸ {footer}")
+        else:
+            body_lines.append("╰━━━━━━━━━━━━━━━━━━━━╯")
+
+        main_card = "\n".join([
+            f"<b>{emoji} {font.smallcaps(title)}</b>",
+            *body_lines,
+        ])
+        if details:
+            return f"{main_card}\n\n<blockquote expandable>\n<b>Details:</b>\n\n{details}\n</blockquote>"
+        return main_card
+
 
 
 def plain_text(text: str) -> str:
     """Convert a formatted message (HTML/Markdown) to plain text suitable for
     contexts that don't support formatting (callback_answer, inline results).
 
-    This is intentionally conservative: strip HTML tags, remove Markdown
-    emphasis and code markers, unescape HTML entities, and normalize spaces
+    Strips HTML tags (including tables, headings, details/summary), removes Markdown
+    emphasis and code markers, unescapes HTML entities, and normalizes spaces
     while preserving newlines.
     """
     if text is None:
@@ -478,8 +522,12 @@ def plain_text(text: str) -> str:
     if not isinstance(text, str):
         text = str(text)
 
-    # Remove HTML tags
-    out = re.sub(r'<[^>]+>', '', text)
+    # Format table tags to line-separated items before stripping
+    out = text.replace('</tr>', '\n').replace('</td>', ' | ').replace('</th>', ' | ')
+    out = re.sub(r'</?(?:h[1-6]|p|div|blockquote|summary|details)>', '\n', out, flags=re.IGNORECASE)
+
+    # Remove all remaining HTML tags
+    out = re.sub(r'<[^>]+>', '', out)
 
     # Remove common Markdown/markup chars that affect formatting
     out = re.sub(r'[\*`_~]', '', out)
@@ -489,4 +537,7 @@ def plain_text(text: str) -> str:
 
     # Normalize spaces but preserve newlines
     out = '\n'.join(re.sub(r'[ \t]+', ' ', line).strip() for line in out.splitlines())
+    # Remove excessive blank lines
+    out = re.sub(r'\n{3,}', '\n\n', out)
     return out.strip()
+

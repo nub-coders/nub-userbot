@@ -10,91 +10,77 @@ from tools import *
 async def alive(client, message):
     user_id, alive_logo, emoji, alive_text = await get_globals(client)
     xx = await message.edit_text("⚡️")
-    await asyncio.sleep(2)
     send = client.send_video if alive_logo.endswith(".mp4") else client.send_photo
     uptime = await get_readable_time((time.time() - StartTime))
+
+    stats_block = (
+        f"<blockquote>\n"
+        f"<b>• Master:</b> {client.me.mention}\n"
+        f"<b>• Python:</b> <code>{python_version()}</code>\n"
+        f"<b>• Pyrogram:</b> <code>{versipyro}</code>\n"
+        f"<b>• Uptime:</b> <code>{uptime}</code>\n"
+        f"</blockquote>"
+    )
+
     man = (
-        f"""[NUB Userbot ⚡](tg://user?id={client.me.id}) is Up and Running.
-
-<b>{alive_text}</b>
-
-<blockquote>{emoji} <b>MASTER :</b> {client.me.mention}
-{emoji} <b>Bot Version :</b> <code>1.0</code>
-{emoji} <b>Python Version :</b> <code>{python_version()}</code>
-{emoji} <b>Pyrogram Version :</b> <code>{versipyro}</code>
-{emoji} <b>Bot Uptime :</b> <code>{uptime}</code></blockquote>
-
-<b>[SUPPORT](https://t.me/{GROUP})</b> | <b>[CHANNEL](https://t.me/{CHANNEL})</b> | <b>[OWNER](tg://user?id={client.me.id})</b>"""
+        f"<b>{emoji} NUB Userbot is Online</b>\n\n"
+        f"<blockquote>{alive_text}</blockquote>\n\n"
+        f"{stats_block}\n\n"
+        f"<b><a href='https://t.me/{GROUP}'>SUPPORT</a></b> | "
+        f"<b><a href='https://t.me/{CHANNEL}'>CHANNEL</a></b> | "
+        f"<b><a href='tg://user?id={client.me.id}'>OWNER</a></b>"
     )
     try:
-            await xx.delete()
-            await send(
-                message.chat.id,
-                alive_logo,
-                caption=man,
-            )
+        await xx.delete()
+        await send(
+            message.chat.id,
+            alive_logo,
+            caption=man,
+            parse_mode=enums.ParseMode.HTML,
+        )
     except BaseException:
-        await xx.edit(man, disable_web_page_preview=True)
+        await xx.edit(man, parse_mode=enums.ParseMode.HTML, disable_web_page_preview=True)
+
 
 @Client.on_message(filters.command("ping", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def pingme(client, message):
-    # Calculate uptime
     uptime = await get_readable_time((time.time() - StartTime))
     start = datetime.datetime.now()
-    
-    # Fun emoji animations for loading
-    loading_emojis = ["🕐", "🕑", "🕒", "🕓", "🕔", "🕕", "🕖", "🕗", "🕘", "🕙", "🕚", "🕛"]
-    ping_frames = [
-        "█▒▒▒▒▒▒▒▒▒▒ 10%",
-        "███▒▒▒▒▒▒▒ 30%",
-        "█████▒▒▒▒▒ 50%",
-        "███████▒▒▒ 70%",
-        "█████████▒ 90%",
-        "██████████ 100%"
-    ]
-    
-    # Animated loading sequence
-    msg = await message.edit("🏓 **Pinging...**")
-    
-    for frame in ping_frames:
-        await msg.edit(f"```\n{frame}\n```{choice(loading_emojis)}")
-        await asyncio.sleep(0.3)  # Smooth animation delay
-    
+
+    msg = await message.edit("🏓 <b>Pinging...</b>", parse_mode=enums.ParseMode.HTML)
+
     end = datetime.datetime.now()
     ping_duration = (end - start).microseconds / 1000
-    
-    # Status indicators based on ping speed
+
     if ping_duration < 100:
         status = "EXCELLENT 🟢"
     elif ping_duration < 200:
         status = "GOOD 🟡"
     else:
         status = "MODERATE 🔴"
-    
-    # Fancy formatted response
-    response = f"""
-╭──────────────────
-│   PONG! 🏓       
-├──────────────────
-│ ⌚ Speed: {ping_duration:.2f}ms  
-│ 📊 Status: {status} 
-│ ⏱️ Uptime: {uptime}  
-│ 👑 Owner: {client.me.mention} 
-╰──────────────────
-"""
-    
-    # Add random motivational messages
+
     quotes = [
         "Blazing fast! ⚡",
         "Speed demon! 🔥",
         "Lightning quick! ⚡",
         "Sonic boom! 💨"
     ]
-    
-    await msg.edit(
-        response + f"\n<b>{choice(quotes)}</b>"
+
+    response = (
+        f"<b>🏓 Pong!</b> <code>{ping_duration:.2f}ms</code>\n\n"
+        f"<blockquote>\n"
+        f"<b>• Ping:</b> <code>{ping_duration:.2f} ms</code>\n"
+        f"<b>• Status:</b> {status}\n"
+        f"<b>• Uptime:</b> <code>{uptime}</code>\n"
+        f"<b>• Owner:</b> {client.me.mention}\n"
+        f"</blockquote>\n\n"
+        f"<i>\"{choice(quotes)}\"</i>"
     )
+
+    await msg.edit(response, parse_mode=enums.ParseMode.HTML)
+
+
 
 async def get_globals(client):
     user_id = client.me.id

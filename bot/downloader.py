@@ -21,8 +21,14 @@ from urllib.parse import urlparse
 
 import requests
 from pyrogram import Client, filters
-from pyrogram.enums import MessageEntityType
-from pyrogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram.enums import MessageEntityType, ButtonStyle, ParseMode
+from pyrogram.types import (
+    Message,
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputRichMessage,
+)
 from pyrogram.errors import FloodWait, ChatForwardsRestricted, FileReferenceExpired, MessageIdInvalid
 try:
     from pyrogram.errors import PremiumAccountRequired
@@ -264,21 +270,36 @@ async def _start_batch_download(message, sender, chat_identifier):
 
     _batch_downloads[sender] = chat.id
     buttons = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📥 Last 10", callback_data="batch_10"),
-         InlineKeyboardButton("📥 Last 25", callback_data="batch_25")],
-        [InlineKeyboardButton("📥 Last 50", callback_data="batch_50"),
-         InlineKeyboardButton("📥 Last 100", callback_data="batch_100")],
-        [InlineKeyboardButton("📝 Custom Range", callback_data="batch_custom")],
-        [InlineKeyboardButton("❌ Cancel", callback_data="batch_cancel")],
+        [
+            InlineKeyboardButton("📥 Last 10", callback_data="batch_10", style=ButtonStyle.PRIMARY),
+            InlineKeyboardButton("📥 Last 25", callback_data="batch_25", style=ButtonStyle.PRIMARY),
+        ],
+        [
+            InlineKeyboardButton("📥 Last 50", callback_data="batch_50", style=ButtonStyle.PRIMARY),
+            InlineKeyboardButton("📥 Last 100", callback_data="batch_100", style=ButtonStyle.PRIMARY),
+        ],
+        [
+            InlineKeyboardButton("📝 Custom Range", callback_data="batch_custom", style=ButtonStyle.DEFAULT),
+        ],
+        [
+            InlineKeyboardButton("❌ Cancel", callback_data="batch_cancel", style=ButtonStyle.DANGER),
+        ],
     ])
     title = getattr(chat, 'title', None) or getattr(chat, 'first_name', 'Chat')
+    chat_card = (
+        f"<h1>{Msg.EMOJI_DOWNLOAD} Batch Downloader</h1>\n\n"
+        f'<table border="1">\n'
+        f'<tr><th>Target Chat</th><td>{title}</td></tr>\n'
+        f'<tr><th>Chat ID</th><td><code>{chat.id}</code></td></tr>\n'
+        f'</table>\n\n'
+        f"<blockquote>Select the number of recent messages to download:</blockquote>"
+    )
     await message.reply(
-        f"{Msg.EMOJI_FOLDER} <b>Chat:</b> {title}\n"
-        f"🆔 <b>ID:</b> <code>{chat.id}</code>\n\n"
-        "Select how many messages to download:",
+        chat_card,
         reply_markup=buttons,
         parse_mode=ParseMode.HTML,
     )
+
 
 
 @Client.on_callback_query(filters.regex(r"^batch_"))
@@ -409,9 +430,20 @@ async def _download_messages_batch(userbot, sender, chat_id, message_ids=None, c
             failed += 1
             await asyncio.sleep(1)
 
+    rate = (success / len(messages) * 100) if messages else 0
+    completion_html = (
+        f"<h1>{Msg.EMOJI_SUCCESS} Batch Download Complete</h1>\n\n"
+        f'<table border="1">\n'
+        f'<tr><th>Metric</th><th>Count</th></tr>\n'
+        f'<tr><td>Total Processed</td><td>{len(messages)}</td></tr>\n'
+        f'<tr><td>Successfully Uploaded</td><td>{success}</td></tr>\n'
+        f'<tr><td>Failed Messages</td><td>{failed}</td></tr>\n'
+        f'<tr><td>Success Rate</td><td>{rate:.1f}%</td></tr>\n'
+        f'</table>'
+    )
     await status.edit_text(
-        f"{Msg.EMOJI_SUCCESS} <b>Batch Download Complete!</b>\n\n"
-        f"• Total: {len(messages)}\n• Success: {success}\n• Failed: {failed}",
+        completion_html,
         parse_mode=ParseMode.HTML,
     )
     shutil.rmtree(user_dir, ignore_errors=True)
+

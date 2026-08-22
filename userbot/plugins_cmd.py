@@ -12,17 +12,19 @@ logger = logging.getLogger("userbot.plugins")
 async def plugins_handler(client, message):
     """Lists community plugins loaded from EXTRA_PLUGINS_DIR."""
     if loaded_extra_plugins:
-        listing = "\n".join(f"┃ • `{name}`" for name in loaded_extra_plugins)
+        lines = []
+        for idx, name in enumerate(loaded_extra_plugins, 1):
+            lines.append(f"<b>{idx}.</b> <code>{name}</code> (Active 🟢)")
         text = (
-            f"🧩 **Loaded plugins** ({len(loaded_extra_plugins)})\n"
-            f"┃ 📂 `{EXTRA_PLUGINS_DIR}`\n"
-            f"{listing}\n"
-            f"╰━━━━━━━━━━━━━━━━━━━━╯"
+            f"<b>🧩 Loaded Extra Plugins ({len(loaded_extra_plugins)})</b>\n\n"
+            f"<blockquote>\n" + "\n".join(lines) + f"\n</blockquote>\n\n"
+            f"📂 <b>Directory:</b> <code>{EXTRA_PLUGINS_DIR}</code>"
         )
     else:
         text = (
-            f"🧩 **No external plugins loaded**\n"
-            f"┃ 📂 Drop `.py` files in `{EXTRA_PLUGINS_DIR}` and restart.\n"
-            f"╰━━━━━━━━━━━━━━━━━━━━╯"
+            f"<b>🧩 External Plugins</b>\n\n"
+            f"<blockquote>No external plugins loaded. Drop <code>.py</code> plugin files into <code>{EXTRA_PLUGINS_DIR}</code> and restart.</blockquote>"
         )
-    await edit_or_reply(message, text)
+    await edit_or_reply(message, text, parse_mode=enums.ParseMode.HTML)
+
+

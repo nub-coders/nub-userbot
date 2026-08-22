@@ -14,11 +14,13 @@ import pyrogram
 from config import *
 from tools import *
 
-# Message templates with proper HTML escaping
-RUNNING = "<b>Eval Expression:</b>\n<pre>{}</pre>\n<b>Running...</b>"
-ERROR = "<b>Eval Expression:</b>\n<pre>{}</pre>\n<b>Error:</b>\n<pre>{}</pre>"
-SUCCESS = "<b>Eval Expression:</b>\n<pre>{}</pre>\n<b>Success</b>"
-RESULT = "<b>Eval Expression:</b>\n<pre>{}</pre>\n<b>Result:</b>\n<pre>{}</pre>"
+# Message templates with standard MTProto HTML formatting and expandable quotes
+RUNNING = "<b>⚡ Executing Code...</b>\n\n<pre>{}</pre>\n\n<blockquote>⏳ Running async evaluation...</blockquote>"
+ERROR = "<b>❌ Eval Error</b>\n\n<blockquote expandable><b>Expression:</b>\n<pre>{}</pre></blockquote>\n\n<blockquote><b>Traceback:</b></blockquote>\n<pre>{}</pre>"
+SUCCESS = "<b>⚡ Eval Completed</b>\n\n<pre>{}</pre>\n\n<blockquote>✅ Executed successfully with no return value.</blockquote>"
+RESULT = "<b>⚡ Eval Completed</b>\n\n<blockquote expandable><b>Expression:</b>\n<pre>{}</pre></blockquote>\n\n<blockquote><b>Execution Output:</b></blockquote>\n<pre>{}</pre>"
+
+
 
 @Client.on_message(filters.me & filters.command('eval', prefixes=HARDCODED_PREFIXES))
 @retry()

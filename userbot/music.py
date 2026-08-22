@@ -657,18 +657,24 @@ async def queue_command(client, message):
             await message.edit(Msg.card("Queue Empty", ["No songs in queue."], emoji=Msg.EMOJI_INFO, footer="[prefix]play <song> to add"))
             return
         
-        queue_text = f"╭━━ {Msg.EMOJI_MUSIC} MUSIC QUEUE ({len(current_queue)}) ━━╮\n\n"
+        lines = []
         for i, song in enumerate(current_queue[:10], 1):  # Show first 10 songs
-            title = song.get('title', 'Unknown Title')[:40]
-            duration = song.get('duration', '00:00')
-            queue_text += f"{i}. **{title}** - `{duration}`\n"
-        
-        if len(current_queue) > 10:
-            queue_text += f"\n... and {len(current_queue) - 10} more songs"
-        
-        await message.edit(queue_text)
+            title = str(song.get('title', 'Unknown Title'))[:40].replace("<", "&lt;").replace(">", "&gt;")
+            duration = str(song.get('duration', '00:00'))
+            lines.append(f"<b>{i}.</b> {title} — <code>{duration}</code>")
+
+        extra = f"\n\n<i>... and {len(current_queue) - 10} more songs in queue</i>" if len(current_queue) > 10 else ""
+
+        queue_html = (
+            f"<b>{Msg.EMOJI_MUSIC} Music Queue ({len(current_queue)})</b>\n\n"
+            f"<blockquote>\n" + "\n".join(lines) + f"\n</blockquote>"
+            f"{extra}"
+        )
+        await message.edit(queue_html, parse_mode=enums.ParseMode.HTML)
     except Exception as e:
-        await message.edit(f"❌ **Error:** {str(e)}")
+        await message.edit(styled_error(str(e)), parse_mode=enums.ParseMode.HTML)
+
+
 
 # Music.py Commands and Categories
 music_commands = {

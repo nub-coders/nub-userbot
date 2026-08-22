@@ -106,16 +106,26 @@ async def list_sudoers(client, message):
     users_data = user_sessions.find_one({"user_id": client.me.id})
     if not users_data:
         return await message.edit(
-            f"No Sudoers\n\n"
-            f"┃ No sudoers have been added yet\n"
-            f"╰▸ [prefix]addsudo to add users"
+            f"<b>{Msg.EMOJI_INFO} No Sudoers</b>\n\n<blockquote>No sudoers have been configured yet. Use <code>.addsudo</code> to grant access.</blockquote>",
+            parse_mode=enums.ParseMode.HTML,
         )
 
     sudoers = users_data.get("sudoers", [])
 
     if sudoers:
-        sudoers_lines = [f"`{user_id}`" for user_id in sudoers]
-        sudoers_lines.append(f"Total: {len(sudoers)} user(s)")
-        await message.edit(Msg.card("Sudoers List", sudoers_lines, emoji=Msg.EMOJI_INFO))
+        lines = []
+        for idx, uid in enumerate(sudoers, 1):
+            lines.append(f"<b>{idx}.</b> <code>{uid}</code> (Full Sudo)")
+        result_html = (
+            f"<b>{Msg.EMOJI_SHIELD} Sudoers Registry</b>\n\n"
+            f"<blockquote>\n" + "\n".join(lines) + f"\n</blockquote>\n\n"
+            f"<b>Total Active Sudoers:</b> <code>{len(sudoers)}</code>"
+        )
+        await message.edit(result_html, parse_mode=enums.ParseMode.HTML)
     else:
-        await message.edit(Msg.card("No Sudoers", ["List is empty"], emoji=Msg.EMOJI_INFO, footer="[prefix]addsudo to add users"))
+        await message.edit(
+            f"<b>{Msg.EMOJI_INFO} Sudoers List Empty</b>\n\n<blockquote>No users in sudoers list. Use <code>.addsudo</code> to add someone.</blockquote>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+
+

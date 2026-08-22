@@ -478,14 +478,19 @@ me_filter = (filters.me | sudoers_filter()) & filters.command("qt", prefixes=HAR
 @Client.on_message(me_filter)
 async def duck_command_handler(client, message):
     """Enhanced quote command handler with better error handling and features"""
-    USERBOT = await edit_or_reply(message, f"╭── {Msg.EMOJI_NOTE} QUOTE ──╮\n┃ {Msg.EMOJI_LOADING} Generating quote...\n╰━━━━━━━━━━━━━━━━━━━━╯")
+    USERBOT = await edit_or_reply(
+        message,
+        f"<b>{Msg.EMOJI_NOTE} Generating Quote</b>\n\n<blockquote>{Msg.EMOJI_LOADING} Rendering Quotly sticker...</blockquote>",
+    )
+
 
     # Check if the message is a reply
     if not message.reply_to_message:
-        await USERBOT.edit_text(Msg.ERR_REPLY_TO_QUOTE)
+        await USERBOT.edit_text(styled_error("Reply to a message to generate a quote sticker."))
         await asyncio.sleep(3)
         await USERBOT.delete()
         return
+
 
     try:
         sender = message.from_user.id if message.from_user else message.chat.id

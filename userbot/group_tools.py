@@ -197,26 +197,33 @@ async def invite_to_voice_chat(client, message):
 @Client.on_message(filters.command("id", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def id_command(client, message):
-    lines = [f"💬 **Chat ID:** `{message.chat.id}`"]
+    lines = [f"<b>• Chat ID:</b> <code>{message.chat.id}</code>"]
     reply = message.reply_to_message
     if reply and reply.from_user:
-        lines.append(f"👤 **Replied user:** `{reply.from_user.id}`")
+        lines.append(f"<b>• Replied User ID:</b> <code>{reply.from_user.id}</code>")
     elif message.from_user:
-        lines.append(f"👤 **Your ID:** `{message.from_user.id}`")
+        lines.append(f"<b>• Your User ID:</b> <code>{message.from_user.id}</code>")
     if reply:
-        lines.append(f"#️⃣ **Message ID:** `{reply.id}`")
+        lines.append(f"<b>• Message ID:</b> <code>{reply.id}</code>")
         # media file IDs
         _MEDIA = ("photo", "video", "audio", "voice", "video_note", "animation", "document", "sticker")
         for attr in _MEDIA:
             obj = getattr(reply, attr, None)
             if obj:
-                lines.append(f"📎 **File ID ({attr}):** `{obj.file_id}`")
+                lines.append(f"<b>• File ID ({attr}):</b> <code>{obj.file_id}</code>")
                 thumb = getattr(obj, "thumbs", None) or getattr(obj, "thumb", None)
                 if thumb:
                     t = thumb[0] if isinstance(thumb, list) else thumb
-                    lines.append(f"🖼 **Thumbnail File ID:** `{t.file_id}`")
+                    lines.append(f"<b>• Thumb File ID:</b> <code>{t.file_id}</code>")
                 break
-    await message.edit("\n".join(lines))
+
+    result_text = (
+        f"<b>🆔 Identifier Details</b>\n\n"
+        f"<blockquote>\n" + "\n".join(lines) + "\n</blockquote>"
+    )
+    await message.edit(result_text, parse_mode=enums.ParseMode.HTML)
+
+
 
 
 @Client.on_message(filters.command("leave", prefixes=HARDCODED_PREFIXES) & filters.me & filters.group)

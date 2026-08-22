@@ -87,17 +87,19 @@ async def unban_all_users(client, message):
 
                     # Update progress every 10 unbans
                     if total_processed % 10 == 0:
-                        progress_message = f"""🔄 Unban in progress...
-
-📊 Processed: {total_processed}
-✅ Unbanned: {unbanned_count}
-❌ Failed: {failed_count}
-📈 Success Rate: {(unbanned_count/total_processed)*100:.1f}%"""
+                        progress_block = (
+                            f"<b>🔄 Unban in Progress</b>\n\n"
+                            f"<blockquote>\n"
+                            f"<b>• Processed:</b> {total_processed}\n"
+                            f"<b>• Unbanned:</b> {unbanned_count}\n"
+                            f"<b>• Failed:</b> {failed_count}\n"
+                            f"</blockquote>"
+                        )
 
                         try:
-                            await status_msg.edit(progress_message)
+                            await status_msg.edit(progress_block, parse_mode=enums.ParseMode.HTML)
                         except Exception as e:
-                            logger.debug(f"Unban-all progress edit failed: {e}")  # usually rate limits
+                            logger.debug(f"Unban-all progress edit failed: {e}")
 
                     # Small delay to avoid rate limits
                     await asyncio.sleep(0.1)
@@ -108,24 +110,28 @@ async def unban_all_users(client, message):
                     continue
 
             if total_processed == 0:
-                await status_msg.edit(Msg.INFO_NO_BANNED_USERS)
+                await status_msg.edit(f"<b>{Msg.EMOJI_INFO} No Banned Users</b>\n\n<blockquote>No banned members found in this chat.</blockquote>", parse_mode=enums.ParseMode.HTML)
                 return
 
-            # Final result
-            final_message = f"""✅ Unban All Completed
+            rate = (unbanned_count / total_processed * 100) if total_processed else 0
+            final_block = (
+                f"<b>✅ Unban All Completed</b>\n\n"
+                f"<blockquote>\n"
+                f"<b>• Chat:</b> {chat.title}\n"
+                f"<b>• Total Processed:</b> {total_processed}\n"
+                f"<b>• Successfully Unbanned:</b> {unbanned_count}\n"
+                f"<b>• Failed:</b> {failed_count}\n"
+                f"<b>• Success Rate:</b> {rate:.1f}%\n"
+                f"</blockquote>\n\n"
+                f"<i>🎉 All eligible banned members have been unrestricted.</i>"
+            )
 
-📊 **Results:**
-👥 Total Processed: {total_processed}
-✅ Successfully Unbanned: {unbanned_count}
-❌ Failed to Unban: {failed_count}
-📈 Success Rate: {(unbanned_count/total_processed)*100:.1f}%
+            await status_msg.edit(final_block, parse_mode=enums.ParseMode.HTML)
 
-🎉 All eligible users have been unbanned from {chat.title}"""
-
-            await status_msg.edit(final_message)
 
         except Exception as e:
             await status_msg.edit(styled_error(f"Unban error: {str(e)}"))
+
 
     except Exception as e:
         try:

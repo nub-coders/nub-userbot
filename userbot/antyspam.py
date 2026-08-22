@@ -361,8 +361,18 @@ async def show_blacklist(client, message):
     if user_data:
         blocked_list = user_data.get("blocked_list", [])
         if blocked_list:
-            await message.reply(f"Blacklisted chats:<blockquote> {', '.join(map(str, blocked_list))}</blockquote>")
+            lines = []
+            for idx, cid in enumerate(blocked_list, 1):
+                lines.append(f"<b>{idx}.</b> <code>{cid}</code> (Blacklisted 🚫)")
+            result_html = (
+                f"<b>🚫 Blacklisted Chats ({len(blocked_list)})</b>\n\n"
+                f"<blockquote>\n" + "\n".join(lines) + f"\n</blockquote>\n\n"
+                f"💡 <i>Use <code>.rmbl &lt;chat_id&gt;</code> to remove a chat from this list.</i>"
+            )
+            await message.reply(result_html, parse_mode=enums.ParseMode.HTML)
         else:
-            await message.reply("Blacklist is empty.")
+            await message.reply(f"<b>🚫 Blacklist Empty</b>\n\n<blockquote>No chats or users are currently blacklisted.</blockquote>", parse_mode=enums.ParseMode.HTML)
     else:
         await message.reply("No blacklist found for this bot.")
+
+

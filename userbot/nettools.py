@@ -10,7 +10,7 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 from tools import (
     HARDCODED_PREFIXES, edit_or_reply, sudoers_filter, retry,
-    get_args_from_caret
+    get_args_from_caret, styled_error
 )
 
 logger = logging.getLogger("userbot")
@@ -130,54 +130,79 @@ def _expand_percentages(expression: str) -> str:
 async def http_ping(client: Client, message: Message):
     args = message.text.split(maxsplit=1)
     url = args[1] if len(args) > 1 else "https://google.com"
-    msg = await edit_or_reply(message, f"🏓 **Pinging {url}...**\n\n⏳ Testing connection speed...")
+    msg = await edit_or_reply(message, f"🏓 <b>Testing HTTP latency to {url}...</b>")
     try:
         async with aiohttp.ClientSession() as session:
             start = time.perf_counter()
             async with session.get(url, timeout=5) as resp:
                 elapsed = (time.perf_counter() - start) * 1000
-                status = "✅ Excellent" if elapsed < 100 else "🟡 Good" if elapsed < 300 else "🔴 Slow"
-                await msg.edit(f"✅ <b>Ping successful</b>\n\n⏱️ <b>Latency:</b> <code>{elapsed:.2f} ms</code>\n🔗 <b>URL:</b> <code>{url}</code>\n📊 <b>Status:</b> {status}")
+                status = "Excellent 🟢" if elapsed < 100 else "Good 🟡" if elapsed < 300 else "Slow 🔴"
+                result_text = (
+                    f"<b>🏓 HTTP Ping Result</b>\n\n"
+                    f"<blockquote>\n"
+                    f"<b>• Target:</b> <code>{url}</code>\n"
+                    f"<b>• Latency:</b> <code>{elapsed:.2f} ms</code>\n"
+                    f"<b>• Status:</b> {status}\n"
+                    f"</blockquote>"
+                )
+                await msg.edit(result_text)
     except Exception as e:
-        await msg.edit(f"❌ <b>Ping failed</b>\n\n⚠️ <b>Error:</b> <code>{str(e)}</code>\n🔗 <b>URL:</b> <code>{url}</code>\n\n💡 Check if the URL is correct and accessible.")
+        await msg.edit(styled_error(f"Ping failed: {e}", hint="Check if the URL is accessible and includes https://"))
 
 # TCP connectivity test
 @Client.on_message(filters.command("tcp", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 async def tcp_test(client: Client, message: Message):
     args = message.text.split()
     if len(args) < 3:
-        await edit_or_reply(message, f"❌ **Invalid format**\n\n💡 **Usage:** `{HARDCODED_PREFIXES[0]}tcp <host> <port>`\n📝 **Example:** `{HARDCODED_PREFIXES[0]}tcp google.com 443`")
+        await edit_or_reply(message, styled_error("Invalid format", hint=f"Usage: <code>{HARDCODED_PREFIXES[0]}tcp &lt;host&gt; &lt;port&gt;</code>"))
         return
     host, port = args[1], int(args[2])
-    msg = await edit_or_reply(message, f"🔌 **Testing TCP connection...**\n\n🎯 <b>Host:</b> <code>{host}</code>\n🔌 <b>Port:</b> <code>{port}</code>\n\n⏳ Please wait...")
+    msg = await edit_or_reply(message, f"🔌 <b>Testing TCP connection to {host}:{port}...</b>")
     try:
         reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=5)
         writer.close()
         await writer.wait_closed()
-        await msg.edit(f"✅ <b>TCP connection successful</b>\n\n🎯 <b>Host:</b> <code>{host}</code>\n🔌 <b>Port:</b> <code>{port}</code>\n✅ <b>Status:</b> Reachable\n\n💡 The server is online and accepting connections.")
+        result_text = (
+            f"<b>🔌 TCP Test Result</b>\n\n"
+            f"<blockquote>\n"
+            f"<b>• Host:</b> <code>{host}</code>\n"
+            f"<b>• Port:</b> <code>{port}</code>\n"
+            f"<b>• Status:</b> Reachable 🟢\n"
+            f"</blockquote>\n\n"
+            f"<i>The remote host is online and accepting TCP sockets.</i>"
+        )
+        await msg.edit(result_text)
     except Exception as e:
-        await msg.edit(f"❌ <b>TCP connection failed</b>\n\n🎯 <b>Host:</b> <code>{host}</code>\n🔌 <b>Port:</b> <code>{port}</code>\n⚠️ <b>Error:</b> <code>{str(e)}</code>\n\n💡 The server might be offline or blocking connections.")
+        await msg.edit(styled_error(f"TCP connection failed: {e}", hint="The port may be closed, firewalled, or the host is offline."))
 
 # Async speedtest
 @Client.on_message(filters.command("speed", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 async def async_speedtest(client: Client, message: Message):
-    msg = await edit_or_reply(message, "📡 **Running speedtest...**\n\n⏳ This may take 30-60 seconds\n🔍 Finding best server...")
+    msg = await edit_or_reply(message, "📡 <b>Running Speedtest...</b>\n\n⏳ Testing network throughput...")
     try:
         loop = asyncio.get_event_loop()
         st = speedtest.Speedtest()
         await loop.run_in_executor(None, st.get_best_server)
         download = await loop.run_in_executor(None, st.download)
         upload = await loop.run_in_executor(None, st.upload)
-        
+
         download_mbps = download / 1_000_000
         upload_mbps = upload / 1_000_000
-        
-        await msg.edit(f"📡 <b>Speedtest Results</b>\n\n"
-                       f"🔽 <b>Download:</b> <code>{download_mbps:.2f} Mbps</code>\n"
-                       f"🔼 <b>Upload:</b> <code>{upload_mbps:.2f} Mbps</code>\n\n"
-                       f"📊 <b>Quality:</b> {'Excellent ✅' if download_mbps > 50 else 'Good 🟡' if download_mbps > 10 else 'Fair 🔴'}")
+        quality = 'Excellent 🟢' if download_mbps > 50 else 'Good 🟡' if download_mbps > 10 else 'Fair 🔴'
+
+        result_text = (
+            f"<b>📡 Speedtest Results</b>\n\n"
+            f"<blockquote>\n"
+            f"<b>• Download:</b> <code>{download_mbps:.2f} Mbps</code>\n"
+            f"<b>• Upload:</b> <code>{upload_mbps:.2f} Mbps</code>\n"
+            f"<b>• Quality:</b> {quality}\n"
+            f"</blockquote>"
+        )
+        await msg.edit(result_text)
     except Exception as e:
-        await msg.edit(f"❌ <b>Speedtest failed</b>\n\n⚠️ <b>Error:</b> <code>{str(e)}</code>\n\n💡 Check your internet connection and try again.")
+        await msg.edit(styled_error(f"Speedtest failed: {e}"))
+
+
 
 # Calculator command
 @Client.on_message(filters.command(["calc", "calculate"], prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))

@@ -140,8 +140,23 @@ MEMBER      = render('👥')
 GAME        = render('🎮')
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TECH & SYSTEM
+# BUTTON ICON DOCUMENT IDS (for InlineKeyboardButton icon_custom_emoji_id)
 # ─────────────────────────────────────────────────────────────────────────────
-CODE        = render('👨‍💻')
-API         = render('🔌')
+get_custom_emoji_id = pick_document_id
+
+ICON_SUCCESS = pick_document_id('✅')
+ICON_CANCEL  = pick_document_id('❌')
+ICON_ERROR   = pick_document_id('❌')
+ICON_SETTINGS = pick_document_id('⚙️') or pick_document_id('🛠️')
+ICON_DOWNLOAD = pick_document_id('📥')
+ICON_MUSIC    = pick_document_id('🎵')
+ICON_ROCKET   = pick_document_id('🚀')
+ICON_FIRE     = pick_document_id('🔥')
+ICON_STAR     = pick_document_id('⭐️')
+ICON_SEARCH   = pick_document_id('🔍')
+ICON_PLAY     = pick_document_id('▶️') or pick_document_id('🎵')
+ICON_PAUSE    = pick_document_id('⏸️')
+ICON_STOP     = pick_document_id('⏹️')
+ICON_BACK     = pick_document_id('👈') or pick_document_id('🔙')
+
 

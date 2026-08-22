@@ -64,10 +64,11 @@ CreateGroupCall(
                     title=vctitle,
                 )
             )
-        await message.edit(args)
+        title_info = f" with title '<code>{vctitle}</code>'" if vctitle else ""
+        await message.edit(styled_success(f"Group Voice Chat started{title_info}."))
     except Exception as e:
         logger.error(f"Failed to start group call: {e}")
-        await message.edit("Failed to start group call")
+        await message.edit(styled_error(f"Failed to start group call: {e}"))
 
 
 @Client.on_message(filters.command("vc0", prefixes=HARDCODED_PREFIXES) & filters.me & filters.group)
@@ -89,12 +90,13 @@ async def end_group_call(client, message):
                     await client.invoke(
                         DiscardGroupCall(call=InputGroupCall(id=group_call.id, access_hash=group_call.access_hash))
                     )
-                    await message.edit_text("Ended group call")
+                    await message.edit_text(styled_success("Group Voice Chat has been ended."))
                     return
-        await message.edit_text("No active group call found")
+        await message.edit_text(styled_error("No active group call found in this chat."))
     except Exception as e:
         logger.warning(f"End group call failed: {e}")
-        await message.edit_text("Something went wrong ending the call.")
+        await message.edit_text(styled_error(f"Failed to end group call: {e}"))
+
 
 
 

@@ -247,18 +247,23 @@ async def ask_model_handler(client: Client, message: Message):
     else:
         price = "N/A"
 
-    shell_state = "enabled ⚠️" if AGENT_ALLOW_SHELL else "disabled 🔒"
-    moderation_state = "enabled ⚠️" if AGENT_ALLOW_MODERATION else "disabled 🔒"
-    api_state = "enabled ⚠️" if AGENT_ALLOW_TELEGRAM_API else "disabled 🔒"
+    shell_state = "Enabled ⚠️" if AGENT_ALLOW_SHELL else "Disabled 🔒"
+    moderation_state = "Enabled ⚠️" if AGENT_ALLOW_MODERATION else "Disabled 🔒"
+    api_state = "Enabled ⚠️" if AGENT_ALLOW_TELEGRAM_API else "Disabled 🔒"
 
-    await _safe_edit(
-        status,
-        "🤖 **Active AI Model**\n\n"
-        f"• **Model:** `{info.get('model')}`\n"
-        f"• **Selection:** {mode}\n"
-        f"• **Pricing:** {price}\n"
-        f"• **Shell tool:** {shell_state}\n"
-        f"• **Moderation tools:** {moderation_state}\n"
-        f"• **Full Telegram API:** {api_state}\n\n"
-        "💡 Use `.askmodel refresh` to re-query pricing.",
+    config_block = (
+        f"<b>🤖 Active AI Configuration</b>\n\n"
+        f"<blockquote>\n"
+        f"<b>• Model:</b> <code>{info.get('model')}</code>\n"
+        f"<b>• Selection:</b> {mode}\n"
+        f"<b>• Pricing:</b> {price}\n"
+        f"<b>• Shell Tool:</b> {shell_state}\n"
+        f"<b>• Moderation:</b> {moderation_state}\n"
+        f"<b>• Telegram API:</b> {api_state}\n"
+        f"</blockquote>\n\n"
+        f"💡 <i>Use <code>.askmodel refresh</code> to re-query provider pricing.</i>"
     )
+
+    await _safe_edit(status, config_block)
+
+

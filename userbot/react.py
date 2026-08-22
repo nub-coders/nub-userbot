@@ -145,9 +145,14 @@ async def react_control_command(client, message):
 @Client.on_message(filters.command("reactlist", prefixes=HARDCODED_PREFIXES) & filters.me)
 async def react_list_command(client, message):
     """List available reactions"""
-    await message.edit(Msg.card(
-        "Available Reactions",
-        [f"{i}. {emoji}" for i, emoji in enumerate(react_emojis, 1)],
-        emoji=Msg.EMOJI_INFO,
-        footer="[prefix]react <number> to set",
-    ))
+    lines = []
+    for i, emo in enumerate(react_emojis, 1):
+        lines.append(f"<b>{i}.</b> {emo} — <code>.react {i}</code>")
+    text = (
+        f"<b>✨ Available Auto-Reactions</b>\n\n"
+        f"<blockquote>\n" + "\n".join(lines) + f"\n</blockquote>\n\n"
+        f"💡 <i>Use <code>.react &lt;number&gt;</code> to activate your chosen emoji.</i>"
+    )
+    await message.edit(text, parse_mode=enums.ParseMode.HTML)
+
+

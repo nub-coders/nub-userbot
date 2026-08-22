@@ -48,22 +48,33 @@ async def ocr_handler(client, message):
         lang = message.command[1] if len(message.command) > 1 else "eng"
 
         # Show progress
-        progress_msg = await message.reply_text(f"🔍 Extracting text ({lang})...")
+        progress_msg = await message.reply_text(f"🔍 <b>Extracting text ({lang})...</b>")
 
         # Process
         text = await extract_text(client, message, language=lang)
 
+        if not text:
+            await progress_msg.edit_text(styled_error("No text could be extracted from the image."))
+            return
+
+        truncated = "\n\n<blockquote>[...content truncated due to length]</blockquote>" if len(text) > 4000 else ""
+        escaped_text = text[:4000].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
         # Show result
-        await progress_msg.edit_text(
-            f"📝 Extracted text ({lang}):\n\n{text[:4000]}" +
-            ("\n[...truncated]" if len(text) > 4000 else "")
+        result_html = (
+            f"<b>📝 OCR Result ({lang})</b>\n\n"
+            f"<pre>{escaped_text}</pre>"
+            f"{truncated}"
         )
+        await progress_msg.edit_text(result_html)
+
 
     except Exception as e:
         await message.edit_text(
-            f"⚠️ OCR Error\n"
-            f"Usage: /ocr [lang]\n"
-            f"Supported languages: eng, spa, fra, etc.\n"
-            f"Error: {str(e)}"
+            styled_error(
+                f"OCR Processing Error: {e}",
+                hint="Usage: <code>/ocr [lang]</code> (e.g. eng, spa, fra, deu)"
+            )
         )
+
 

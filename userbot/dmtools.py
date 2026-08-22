@@ -5,8 +5,9 @@ from pyrogram.types import Message
 from pyrogram.errors import FloodWait
 from tools import (
     HARDCODED_PREFIXES, edit_or_reply, sudoers_filter, retry,
-    is_admin, get_args_from_caret
+    is_admin, get_args_from_caret, styled_error
 )
+
 from utils.message import Msg
 
 logger = logging.getLogger("userbot")
@@ -75,15 +76,19 @@ async def _dm_blast(client, message, *, verb, emoji, needs_text, make_provider, 
                     await status.edit(f"❌ **User has blocked the bot!**\n✅ Sent: {success_count}/{count}")
                     return
 
-        await status.edit(
-            f"{done_msg}\n\n"
-            f"┃ {sent_emoji} Sent: {success_count}/{count}\n"
-            f"┃ ❌ Failed: {failed_count}\n"
-            f"╰━━━━━━━━━━━━━━━━━━━━╯"
+        result_text = (
+            f"<b>{emoji} DM {verb.capitalize()} Completed</b>\n\n"
+            f"<blockquote>\n"
+            f"<b>• Delivered:</b> {success_count} / {count}\n"
+            f"<b>• Failed:</b> {failed_count}\n"
+            f"</blockquote>"
         )
+        await status.edit(result_text)
+
 
     except Exception as e:
-        await edit_or_reply(message, f"❌ **Error:** {str(e)}")
+        await edit_or_reply(message, styled_error(f"DM {verb} failed: {e}"))
+
 
 
 @Client.on_message(filters.command("dmspam", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()) & filters.group)

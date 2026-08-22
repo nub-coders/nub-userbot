@@ -50,18 +50,29 @@ async def info_command_handler(client, message):
     member_info = await client.get_chat_member(chat_id, user_id) if str(chat.type).endswith(('GROUP', 'SUPERGROUP')) else None
     join_date = member_info.joined_date if member_info else "Unknown"
 
-    # Build the full info message
-    full_info_message = (f"User Info:\n"
-                         f"User ID: {user_id}\n"
-                         f"Name: {first_name} {last_name}\n"
-                         f"Username: @{username}\n"
-                         f"Total Messages by User: {user_message_count}\n"
-                         f"Chat Info:\n"
-                         f"Chat ID: {chat_id}\n"
-                         f"Chat Title: {chat_title}\n"
-                         f"Total Messages in Chat: {total_messages}\n"
-                         f"User Join Date: {join_date}")
+    # Build the full info message with native HTML table
+    username_display = f"@{username}" if username else "<i>None</i>"
+    full_name = f"{first_name} {last_name}".strip() or "<i>Anonymous</i>"
+
+    info_table = (
+        f"<b>👤 User Information</b>\n\n"
+        f"<blockquote>\n"
+        f"<b>• Name:</b> {full_name}\n"
+        f"<b>• Username:</b> {username_display}\n"
+        f"<b>• User ID:</b> <code>{user_id}</code>\n"
+        f"<b>• Messages Sent:</b> {user_message_count}\n"
+        f"</blockquote>\n\n"
+        f"<b>💬 Chat Information</b>\n\n"
+        f"<blockquote>\n"
+        f"<b>• Title:</b> {chat_title}\n"
+        f"<b>• Chat ID:</b> <code>{chat_id}</code>\n"
+        f"<b>• Total Messages:</b> {total_messages}\n"
+        f"<b>• Joined Date:</b> {str(join_date)[:19] if join_date else 'N/A'}\n"
+        f"</blockquote>"
+    )
 
     # Edit the initial reply with the complete information
-    await reply_message.edit_text(full_info_message)
+    await reply_message.edit_text(info_table, parse_mode=enums.ParseMode.HTML)
+
+
 

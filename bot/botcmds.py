@@ -34,53 +34,48 @@ from config import *
 from tools import *
 from utils.message import Msg, plain_text
 
+from utils.custom_emojis import (
+    ICON_SUCCESS,
+    ICON_CANCEL,
+    ICON_SETTINGS,
+    ICON_ROCKET,
+    ICON_BACK,
+    ICON_DOWNLOAD,
+)
+
 logger = logging.getLogger("userbot")
 
 
-brief_explanation = f"""╭━━━ {Msg.EMOJI_ROCKET} <b>NUB USERBOT</b> ━━━╮
-┃ Ultimate Telegram Automation
-╰━━━━━━━━━━━━━━━━━━━━━━━━━╯
+brief_explanation = f"""<h1>{Msg.EMOJI_ROCKET} NUB USERBOT</h1>
 
-{Msg.EMOJI_DRAGON} <b>Features</b>
+<p><b>Ultimate Telegram Automation &amp; Multi-tool System</b></p>
 
-{Msg.EMOJI_MUSIC} <b>Voice Chat Player</b>
-    {Msg.EMOJI_SPARK} Stream YouTube audio/video in calls
-    {Msg.EMOJI_LOADING} Queue, skip, pause &amp; resume
+<table border="1">
+<tr><th>Feature</th><th>Description</th></tr>
+<tr><td>{Msg.EMOJI_MUSIC} Voice Player</td><td>Stream YouTube audio/video in calls with full queue control</td></tr>
+<tr><td>{Msg.EMOJI_NOTE} Media Saver</td><td>Automatically save disappearing &amp; restricted media</td></tr>
+<tr><td>{Msg.EMOJI_SHIELD} Restricted Chats</td><td>Download content from private channels &amp; groups</td></tr>
+<tr><td>{Msg.EMOJI_DOWNLOAD} Downloader</td><td>Fast multi-link Telegram &amp; HTTP media downloader</td></tr>
+<tr><td>{Msg.EMOJI_GEAR} AI &amp; Tools</td><td>Agentic AI search, anti-spam, auto-reactions &amp; custom prefixes</td></tr>
+</table>
 
-{Msg.EMOJI_NOTE} <b>Self-Destruct Saver</b>
-    {Msg.EMOJI_LOCK} Save disappearing photos &amp; videos
-    {Msg.EMOJI_SUCCESS} Works automatically in private chats
+<details>
+<summary>⚡ Quick Navigation Guide</summary>
 
-{Msg.EMOJI_SHIELD} <b>Private Chat Access</b>
-    {Msg.EMOJI_LINK} Download from private channels/groups
-    {Msg.EMOJI_SUCCESS} No admin permissions needed
+<p><code>/commands</code> — Browse all commands by category</p>
+<p><code>/settings</code> — Customize preferences &amp; toggle modes</p>
+<p><code>/status</code> — Inspect live bot metrics &amp; session status</p>
+<p><code>/ping</code> — Test server latency &amp; system health</p>
 
-{Msg.EMOJI_DOWNLOAD} <b>Download Manager</b>
-    {Msg.EMOJI_LINK} Telegram links &amp; HTTP/HTTPS URLs
-    {Msg.EMOJI_STAR} Progress tracking &amp; auto-upload
+</details>
 
-{Msg.EMOJI_GEAR} <b>Automation Tools</b>
-    {Msg.EMOJI_PUZZLE} AI chat, spam protection, sudo users
-    {Msg.EMOJI_FIRE} Custom prefixes &amp; auto-reactions
-
-────────────────────
-
-{Msg.EMOJI_STAR} <b>Getting Started</b>
-{Msg.EMOJI_PUZZLE} /commands — explore all features
-{Msg.EMOJI_GEAR} /settings — customize your bot
-{Msg.EMOJI_PIN} /status — check your userbot status
-
-────────────────────
-{Msg.EMOJI_STAR} Community: @{GROUP}
-{Msg.EMOJI_ROCKET} Updates: @{CHANNEL}"""
+<blockquote>
+{Msg.EMOJI_STAR} Community: @{GROUP} | {Msg.EMOJI_ROCKET} Updates: @{CHANNEL}
+</blockquote>"""
 
 
 def build_settings_ui(user_data: dict):
-    """Build the settings message text and keyboard from user_data.
-
-    Returns (text, InlineKeyboardMarkup). Mirrors the toggle keys read by the
-    userbot plugins: Spam_control, game, music, react_control, and the
-    delete_count/block_count welcome-mode counters."""
+    """Build the settings message text and keyboard from user_data using native tables and ButtonStyle."""
     spam_control  = user_data.get('Spam_control', True)
     game_control  = user_data.get('game', False)
     music_control = user_data.get('music', False)
@@ -89,30 +84,32 @@ def build_settings_ui(user_data: dict):
     block_count   = user_data.get('block_count', 0)
     react_emojis  = ['👍', '♥️', '🔥', '🎉']
 
-    ON, OFF = '✅', '❌'
+    ON, OFF = '✅ Enabled', '❌ Disabled'
 
-    # --- message ---
-    text = f"{Msg.EMOJI_GEAR} <b>Userbot Settings</b> {Msg.EMOJI_GEAR}\n\n"
-    text += f"<blockquote>{Msg.EMOJI_WAVE} Welcome new users in DMs: {ON if spam_control else OFF}</blockquote>\n"
-    if spam_control and delete_count > 0:
-        text += f"<blockquote>{Msg.EMOJI_NOTE} Auto-delete after: {delete_count} msgs</blockquote>\n"
-    if spam_control and block_count > 0:
-        text += f"<blockquote>{Msg.EMOJI_SHIELD} Auto-block after: {block_count} msgs</blockquote>\n"
-    text += f"<blockquote>{Msg.EMOJI_PUZZLE} Word chain game autoplay: {ON if game_control else OFF}</blockquote>\n"
-    text += f"<blockquote>{Msg.EMOJI_MUSIC} Music plugin: {ON if music_control else OFF}</blockquote>\n"
-    text += f"<blockquote>{Msg.EMOJI_THUMBS_UP} Auto react: {ON if react_control else OFF}</blockquote>\n"
-    if react_control:
-        text += f"<blockquote>🎯 Reaction: {react_emojis[react_control - 1]}</blockquote>\n"
+    # --- message with native HTML table ---
+    text = (
+        f"<h1>{Msg.EMOJI_GEAR} Userbot Settings</h1>\n\n"
+        f'<table border="1">\n'
+        f'<tr><th>Setting</th><th>Status</th></tr>\n'
+        f'<tr><td>DM Welcome</td><td>{ON if spam_control else OFF}</td></tr>\n'
+        f'<tr><td>Auto-delete</td><td>{str(delete_count) + " msgs" if (spam_control and delete_count > 0) else "Off"}</td></tr>\n'
+        f'<tr><td>Auto-block</td><td>{str(block_count) + " msgs" if (spam_control and block_count > 0) else "Off"}</td></tr>\n'
+        f'<tr><td>Word Chain Bot</td><td>{ON if game_control else OFF}</td></tr>\n'
+        f'<tr><td>Music Plugin</td><td>{ON if music_control else OFF}</td></tr>\n'
+        f'<tr><td>Auto Reaction</td><td>{react_emojis[react_control - 1] if react_control else "Off"}</td></tr>\n'
+        f'</table>\n\n'
+        f'<blockquote>Tap the buttons below to toggle options, then click Done to save.</blockquote>'
+    )
 
-    # --- keyboard ---
+    # --- keyboard with ButtonStyle ---
     welcome_mode = [
         InlineKeyboardButton(
-            f"Auto-delete {'['+str(delete_count)+']' if delete_count else OFF}",
+            f"Auto-delete: {'['+str(delete_count)+']' if delete_count else 'Off'}",
             callback_data="toggle_delete_count",
             style=ButtonStyle.DANGER if delete_count else ButtonStyle.DEFAULT
         ),
         InlineKeyboardButton(
-            f"Auto-block {'['+str(block_count)+']' if block_count else OFF}",
+            f"Auto-block: {'['+str(block_count)+']' if block_count else 'Off'}",
             callback_data="toggle_block_count",
             style=ButtonStyle.DANGER if block_count else ButtonStyle.DEFAULT
         ),
@@ -127,14 +124,41 @@ def build_settings_ui(user_data: dict):
     ]
     buttons = [
         [
-            InlineKeyboardButton(f"Game {ON if game_control else OFF}",      callback_data="toggle_game",         style=ButtonStyle.SUCCESS if game_control  else ButtonStyle.DANGER),
-            InlineKeyboardButton(f"Music {ON if music_control else OFF}",    callback_data="toggle_music",        style=ButtonStyle.SUCCESS if music_control else ButtonStyle.DANGER),
+            InlineKeyboardButton(
+                f"Game: {'ON' if game_control else 'OFF'}",
+                callback_data="toggle_game",
+                style=ButtonStyle.SUCCESS if game_control else ButtonStyle.DANGER,
+            ),
+            InlineKeyboardButton(
+                f"Music: {'ON' if music_control else 'OFF'}",
+                callback_data="toggle_music",
+                style=ButtonStyle.SUCCESS if music_control else ButtonStyle.DANGER,
+            ),
         ],
-        [InlineKeyboardButton(f"Welcome {'⬇️' if spam_control else OFF}", callback_data="toggle_Spam_control", style=ButtonStyle.SUCCESS if spam_control else ButtonStyle.DANGER)],
+        [
+            InlineKeyboardButton(
+                f"DM Welcome: {'ON' if spam_control else 'OFF'}",
+                callback_data="toggle_Spam_control",
+                style=ButtonStyle.SUCCESS if spam_control else ButtonStyle.DANGER,
+            )
+        ],
         *([welcome_mode] if spam_control else []),
-        [InlineKeyboardButton(f"Auto react {'⬇️' if react_control else OFF}", callback_data="toggle_react_control", style=ButtonStyle.SUCCESS if react_control else ButtonStyle.DANGER)],
+        [
+            InlineKeyboardButton(
+                f"Auto React: {'ON' if react_control else 'OFF'}",
+                callback_data="toggle_react_control",
+                style=ButtonStyle.SUCCESS if react_control else ButtonStyle.DANGER,
+            )
+        ],
         *([react_mode] if react_control else []),
-        [InlineKeyboardButton("✅ Done", callback_data="save_settings", style=ButtonStyle.SUCCESS)],
+        [
+            InlineKeyboardButton(
+                "Save Preferences",
+                callback_data="save_settings",
+                style=ButtonStyle.SUCCESS,
+                icon_custom_emoji_id=ICON_SUCCESS,
+            )
+        ],
     ]
     return text, InlineKeyboardMarkup(buttons)
 
@@ -143,7 +167,13 @@ def _commands_keyboard():
     """Build the category-picker keyboard used by /commands and the Back button."""
     keyboard_rows, row = [], []
     for category in categories.keys():
-        row.append(InlineKeyboardButton(str(category), callback_data=f'category_{category}', style=ButtonStyle.PRIMARY))
+        row.append(
+            InlineKeyboardButton(
+                str(category),
+                callback_data=f'category_{category}',
+                style=ButtonStyle.PRIMARY,
+            )
+        )
         if len(row) == 2:
             keyboard_rows.append(row)
             row = []
@@ -165,7 +195,15 @@ async def start_handler(client, message: Message):
         )
     except Exception as e:
         logger.error(f"[BOT] Error sending start photo: {e}")
+        if hasattr(message, "reply_rich"):
+            try:
+                from pyrogram.types import InputRichMessage
+                await message.reply_rich(InputRichMessage(html=brief_explanation))
+                return
+            except Exception:
+                pass
         await message.reply(brief_explanation, parse_mode=ParseMode.HTML)
+
 
 
 # ─────────────────────────── /ping ─────────────────────────────────────────
@@ -173,7 +211,7 @@ async def start_handler(client, message: Message):
 async def ping_command(client, message: Message):
     uptime = await get_readable_time((time.time() - StartTime))
     start = datetime.datetime.now()
-    xx = await message.reply("**Pinging...**")
+    xx = await message.reply("⏳ <b>Testing latency...</b>", parse_mode=ParseMode.HTML)
     end = datetime.datetime.now()
     delta_ping = round((end - start).microseconds / 1000, 3)
 
@@ -182,17 +220,16 @@ async def ping_command(client, message: Message):
     disk = psutil.disk_usage("/").percent
     process = psutil.Process()
     _ping = (
-        f"╭━━━ {Msg.EMOJI_PONG} <b>PONG</b> ━━━╮\n"
-        f"┃\n"
-        f"┃ {Msg.EMOJI_ROCKET} Ping: {str(delta_ping).replace('.', ',')} ms\n"
-        f"┃ {Msg.EMOJI_LOADING} Uptime: {uptime}\n"
-        f"┃\n"
-        f"┃ {Msg.EMOJI_FOLDER} Server Stats\n"
-        f"┃ ▸ CPU: {cpu}%\n"
-        f"┃ ▸ RAM: {mem}%\n"
-        f"┃ ▸ Disk: {disk}%\n"
-        f"┃ ▸ Memory: {round(process.memory_info()[0] / 1024 ** 2)} MB\n"
-        f"╰━━━━━━━━━━━━━━━━━━╯"
+        f"<h1>{Msg.EMOJI_PONG} Pong! <code>{str(delta_ping).replace('.', ',')} ms</code></h1>\n\n"
+        f'<table border="1">\n'
+        f'<tr><th>Metric</th><th>Value</th></tr>\n'
+        f'<tr><td>Ping Latency</td><td><code>{delta_ping} ms</code></td></tr>\n'
+        f'<tr><td>System Uptime</td><td><code>{uptime}</code></td></tr>\n'
+        f'<tr><td>CPU Usage</td><td><code>{cpu}%</code></td></tr>\n'
+        f'<tr><td>RAM Usage</td><td><code>{mem}%</code></td></tr>\n'
+        f'<tr><td>Disk Usage</td><td><code>{disk}%</code></td></tr>\n'
+        f'<tr><td>Process Memory</td><td><code>{round(process.memory_info()[0] / 1024 ** 2)} MB</code></td></tr>\n'
+        f'</table>'
     )
     await xx.edit(_ping, parse_mode=ParseMode.HTML)
 
@@ -203,12 +240,13 @@ async def commands_handler(client, message: Message):
     markup = _commands_keyboard()
     if markup is None:
         await message.reply(
-            f"{Msg.EMOJI_PIN} <b>No categories available.</b>",
+            f"<h1>{Msg.EMOJI_PIN} Categories Unavailable</h1><p>No categories are currently loaded.</p>",
             parse_mode=ParseMode.HTML,
         )
         return
     await message.reply(
-        f"{Msg.EMOJI_PIN} <b>Please choose a category to see its commands:</b>",
+        f"<h1>{Msg.EMOJI_PIN} Command Browser</h1>\n\n"
+        f"<p>Select a category below to explore its available commands and usages:</p>",
         reply_markup=markup,
         parse_mode=ParseMode.HTML,
     )
@@ -227,17 +265,23 @@ async def category_handler(client, callback_query: CallbackQuery):
             desc, usage, example, note, warning, flags = parse_help_entry(raw)
             clean_cmd = str(cmd).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             clean_desc = str(desc).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            items.append(f"<b>{clean_cmd}</b> - {clean_desc}")
-        category_description = "\n\n".join(items)
+            clean_usage = str(usage).replace("[prefix]", ".").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") if usage else f".{clean_cmd}"
+            items.append(
+                f"<details>\n"
+                f"<summary><b>{clean_cmd}</b> — {clean_desc}</summary>\n\n"
+                f"<p><b>Usage:</b> <code>{clean_usage}</code></p>\n"
+                f"</details>"
+            )
+        category_description = "\n".join(items)
     else:
-        category_description = "<i>No commands in this category yet.</i>"
+        category_description = "<p><i>No commands in this category yet.</i></p>"
 
     prefix_list = ", ".join(f"<code>{p}</code>" for p in HARDCODED_PREFIXES)
-    prefix_info = f"\n\n<b>Available Prefixes:</b> {prefix_list}"
+    prefix_info = f"<blockquote><b>Available Prefixes:</b> {prefix_list}</blockquote>"
 
-    text = f"{Msg.EMOJI_ROCKET} <b>{category} COMMANDS:</b>\n\n{category_description}{prefix_info}"
+    text = f"<h1>{Msg.EMOJI_ROCKET} {category} Commands</h1>\n\n{category_description}\n\n{prefix_info}"
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("« Back", callback_data='back', style=ButtonStyle.PRIMARY)]
+        [InlineKeyboardButton("« Back to Categories", callback_data='back', style=ButtonStyle.PRIMARY, icon_custom_emoji_id=ICON_BACK)]
     ])
     await callback_query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
 
@@ -247,12 +291,13 @@ async def back_handler(client, callback_query: CallbackQuery):
     markup = _commands_keyboard()
     if markup is None:
         await callback_query.edit_message_text(
-            f"{Msg.EMOJI_PIN} <b>No categories available.</b>",
+            f"<h1>{Msg.EMOJI_PIN} Categories Unavailable</h1><p>No categories are currently loaded.</p>",
             parse_mode=ParseMode.HTML,
         )
         return
     await callback_query.edit_message_text(
-        f"{Msg.EMOJI_PIN} <b>Please choose a category to see its commands:</b>",
+        f"<h1>{Msg.EMOJI_PIN} Command Browser</h1>\n\n"
+        f"<p>Select a category below to explore its available commands and usages:</p>",
         reply_markup=markup,
         parse_mode=ParseMode.HTML,
     )
@@ -302,9 +347,24 @@ async def toggle_setting(client, callback_query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(r"^save_settings$"))
 async def save_settings(client, callback_query: CallbackQuery):
+    sender_id = callback_query.from_user.id
+    user_data = user_sessions.find_one({"user_id": sender_id}) or {"user_id": sender_id}
+    spam_control  = "Enabled" if user_data.get('Spam_control', True) else "Disabled"
+    game_control  = "Enabled" if user_data.get('game', False) else "Disabled"
+    music_control = "Enabled" if user_data.get('music', False) else "Disabled"
+
+    success_html = (
+        f"<h1>{Msg.EMOJI_SUCCESS} Settings Saved</h1>\n\n"
+        f"<p>Your preferences have been successfully updated and applied:</p>\n\n"
+        f'<table border="1">\n'
+        f'<tr><th>Setting</th><th>Status</th></tr>\n'
+        f'<tr><td>DM Welcome</td><td>{spam_control}</td></tr>\n'
+        f'<tr><td>Word Chain Bot</td><td>{game_control}</td></tr>\n'
+        f'<tr><td>Music Plugin</td><td>{music_control}</td></tr>\n'
+        f'</table>'
+    )
     await callback_query.edit_message_text(
-        f"{Msg.EMOJI_SUCCESS} <b>Settings Saved</b>\n\n"
-        f"┃ Your preferences have been applied.",
+        success_html,
         parse_mode=ParseMode.HTML,
     )
 
@@ -338,24 +398,25 @@ async def status_handler(client, message: Message):
     uptime = await get_readable_time((time.time() - StartTime))
 
     app_data = user_sessions.find_one({"user_id": user_id}) or {}
-    spam_control = "✅" if app_data.get('Spam_control', True) else "❌"
-    game = "✅" if app_data.get('game', False) else "❌"
-    music = "✅" if app_data.get('music', False) else "❌"
+    spam_control = "✅ Enabled" if app_data.get('Spam_control', True) else "❌ Disabled"
+    game = "✅ Enabled" if app_data.get('game', False) else "❌ Disabled"
+    music = "✅ Enabled" if app_data.get('music', False) else "❌ Disabled"
 
-    status_message = f"""┏━━━ {Msg.EMOJI_CROWN} <b>USER STATUS</b> ━━━
-
-👤 <b>User Details:</b>
-• <b>Name:</b> {user_name}
-• <b>Username:</b> {username_str}
-• <b>User ID:</b> <code>{user_id}</code>
-• <b>Userbot Status:</b> {userbot_status}
-• <b>Uptime:</b> {uptime}
-
-{Msg.EMOJI_GEAR} <b>Userbot settings:</b>
-• Welcome message: {spam_control}
-• Word chain bot: {game}
-• Music bot: {music}
-┗━━━━━━━━━━━━━━━━━━"""
+    status_message = (
+        f"<h1>{Msg.EMOJI_CROWN} User Status</h1>\n\n"
+        f'<table border="1">\n'
+        f'<tr><th>User Attribute</th><th>Value</th></tr>\n'
+        f'<tr><td>Name</td><td>{user_name}</td></tr>\n'
+        f'<tr><td>Username</td><td>{username_str}</td></tr>\n'
+        f'<tr><td>User ID</td><td><code>{user_id}</code></td></tr>\n'
+        f'<tr><td>Userbot Status</td><td>{userbot_status}</td></tr>\n'
+        f'<tr><td>Uptime</td><td>{uptime}</td></tr>\n'
+        f'<tr><th>Bot Plugin</th><th>Status</th></tr>\n'
+        f'<tr><td>DM Welcome</td><td>{spam_control}</td></tr>\n'
+        f'<tr><td>Word Chain Bot</td><td>{game}</td></tr>\n'
+        f'<tr><td>Music Player</td><td>{music}</td></tr>\n'
+        f'</table>'
+    )
 
     await message.reply(status_message, parse_mode=ParseMode.HTML)
 
@@ -410,14 +471,16 @@ async def inline_query_handler(client, query: InlineQuery):
             chat = await userbot.get_chat(chat_id)
             members_count = await userbot.get_chat_members_count(chat_id)
             banall_message = (
-                f"⚠️ <b>Confirm Ban All Users</b> ⚠️\n\n"
-                f"<b>Group:</b> {chat.title}\n"
-                f"<b>Total Members:</b> {members_count}\n\n"
-                f"Please confirm if you want to ban all users of this group."
+                f"<h1>⚠️ Confirm Ban All Users</h1>\n\n"
+                f'<table border="1">\n'
+                f'<tr><th>Target Group</th><td>{chat.title}</td></tr>\n'
+                f'<tr><th>Total Members</th><td>{members_count}</td></tr>\n'
+                f'</table>\n\n'
+                f"<blockquote>Please confirm if you want to ban all members in this group.</blockquote>"
             )
             buttons = InlineKeyboardMarkup([[
-                InlineKeyboardButton("❌ Cancel", callback_data=f"banall_cancel_{chat_id}", style=ButtonStyle.DANGER),
-                InlineKeyboardButton("✅ Confirm", callback_data=f"banall_confirm_{chat_id}", style=ButtonStyle.SUCCESS),
+                InlineKeyboardButton("❌ Cancel", callback_data=f"banall_cancel_{chat_id}", style=ButtonStyle.DANGER, icon_custom_emoji_id=ICON_CANCEL),
+                InlineKeyboardButton("✅ Confirm Ban", callback_data=f"banall_confirm_{chat_id}", style=ButtonStyle.SUCCESS, icon_custom_emoji_id=ICON_SUCCESS),
             ]])
             result = InlineQueryResultArticle(
                 id=f"banall_{chat_id}",
@@ -442,13 +505,15 @@ async def inline_query_handler(client, query: InlineQuery):
     username = f"@{info.username}" if info.username else "No username"
     connected = clients.get(user_id) is not None
     status_message = (
-        f"<blockquote>{Msg.EMOJI_STAR} <b>NUB Userbot</b></blockquote>\n"
-        f"<b>Name:</b> {name}\n"
-        f"<b>Username:</b> {username}\n"
-        f"<b>User ID:</b> <code>{user_id}</code>\n"
-        f"<blockquote><i>Userbot status: {'Connected 🟢' if connected else 'Disconnected 🔴'}</i></blockquote>"
+        f"<h1>{Msg.EMOJI_STAR} NUB Userbot</h1>\n\n"
+        f'<table border="1">\n'
+        f'<tr><th>User</th><td>{name}</td></tr>\n'
+        f'<tr><th>Username</th><td>{username}</td></tr>\n'
+        f'<tr><th>User ID</th><td><code>{user_id}</code></td></tr>\n'
+        f'<tr><th>Status</th><td>{"Connected 🟢" if connected else "Disconnected 🔴"}</td></tr>\n'
+        f'</table>'
     )
-    buttons = InlineKeyboardMarkup([[InlineKeyboardButton("COMMANDS", callback_data="back", style=ButtonStyle.PRIMARY)]])
+    buttons = InlineKeyboardMarkup([[InlineKeyboardButton("COMMANDS", callback_data="back", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=ICON_ROCKET)]])
     result = InlineQueryResultArticle(
         id=str(user_id),
         title="STATUS",
@@ -468,11 +533,17 @@ async def banall_callback_handler(client, callback_query: CallbackQuery):
     sender = callback_query.from_user.id
 
     if action != "confirm":
-        return await callback_query.edit_message_text("❌ Command cancelled")
+        return await callback_query.edit_message_text(
+            f"<h1>❌ Action Cancelled</h1><p>The ban-all operation has been safely aborted.</p>",
+            parse_mode=ParseMode.HTML,
+        )
 
     userbot = clients.get(sender)
     if not userbot:
-        return await callback_query.edit_message_text("❌ Userbot not available")
+        return await callback_query.edit_message_text(
+            f"<h1>❌ Userbot Unavailable</h1><p>Your userbot is not currently connected. Use <code>/restart</code> to reconnect.</p>",
+            parse_mode=ParseMode.HTML,
+        )
 
     try:
         chat = await userbot.get_chat(chat_id)
@@ -487,9 +558,11 @@ async def banall_callback_handler(client, callback_query: CallbackQuery):
                     if banned_count % 10 == 0:
                         try:
                             await callback_query.edit_message_text(
-                                f"🔨 <b>Banning in progress...</b>\n\n"
-                                f"<b>Group:</b> {chat.title}\n"
-                                f"<b>Banned:</b> {banned_count}/{total_users}",
+                                f"<h1>🔨 Banning in Progress</h1>\n\n"
+                                f'<table border="1">\n'
+                                f'<tr><th>Group</th><td>{chat.title}</td></tr>\n'
+                                f'<tr><th>Banned</th><td>{banned_count} / {total_users}</td></tr>\n'
+                                f'</table>',
                                 parse_mode=ParseMode.HTML,
                             )
                         except Exception:
@@ -498,24 +571,23 @@ async def banall_callback_handler(client, callback_query: CallbackQuery):
                 continue
         rate = (banned_count / total_users * 100) if total_users else 0
         await callback_query.edit_message_text(
-            f"✅ <b>Ban All Completed</b>\n\n"
-            f"<b>Group:</b> {chat.title}\n"
-            f"<b>Total Members:</b> {total_users}\n"
-            f"<b>Successfully Banned:</b> {banned_count}\n"
-            f"<b>Success Rate:</b> {rate:.1f}%",
+            f"<h1>✅ Ban All Completed</h1>\n\n"
+            f'<table border="1">\n'
+            f'<tr><th>Group</th><td>{chat.title}</td></tr>\n'
+            f'<tr><th>Total Members</th><td>{total_users}</td></tr>\n'
+            f'<tr><th>Successfully Banned</th><td>{banned_count}</td></tr>\n'
+            f'<tr><th>Success Rate</th><td>{rate:.1f}%</td></tr>\n'
+            f'</table>',
             parse_mode=ParseMode.HTML,
         )
     except Exception as e:
-        await callback_query.edit_message_text(f"❌ Error during ban process: {e}")
+        await callback_query.edit_message_text(
+            f"<h1>❌ Error</h1><blockquote>{e}</blockquote>",
+            parse_mode=ParseMode.HTML,
+        )
 
 
 # ─────────────────────────── /stop & /restart ──────────────────────────────
-# These control the single running userbot process, so they are owner-only.
-# is_admin() is true for the account whose session this bot pairs with
-# (main.py registers clients[me.id] = userbot at startup). We also snapshot
-# every confirmed owner into _known_owners so /restart still recognizes the
-# owner after /stop has removed them from `clients`. Without this gate any
-# stranger who DMs the bot could pause your userbot.
 _known_owners = set()
 
 
@@ -533,20 +605,21 @@ async def stop_handler(client, message: Message):
     sender = message.from_user.id
     if not _is_owner(sender):
         return await message.reply(
-            f"{Msg.EMOJI_LOCK} <b>Owner only.</b> This command is restricted to the userbot owner.",
+            f"<h1>{Msg.EMOJI_LOCK} Access Denied</h1>\n\n"
+            f"<blockquote>This command is restricted to the userbot owner.</blockquote>",
             parse_mode=ParseMode.HTML,
         )
 
     userbot = clients.get(sender)
     if userbot is None:
         return await message.reply(
-            f"{Msg.EMOJI_INFO} <b>Userbot is already stopped.</b>\n"
-            f"╰▸ Use /restart to bring it back online.",
+            f"<h1>{Msg.EMOJI_INFO} Userbot Already Stopped</h1>\n\n"
+            f"<blockquote>Use <code>/restart</code> to bring it back online.</blockquote>",
             parse_mode=ParseMode.HTML,
         )
     await message.reply(
-        f"{Msg.EMOJI_WARNING} <b>Stopping userbot...</b>\n"
-        f"╰▸ Use /restart to bring it back online.",
+        f"<h1>{Msg.EMOJI_WARNING} Stopping Userbot</h1>\n\n"
+        f"<blockquote>Use <code>/restart</code> to relaunch your session at any time.</blockquote>",
         parse_mode=ParseMode.HTML,
     )
     try:
@@ -561,16 +634,18 @@ async def restart_handler(client, message: Message):
     sender = message.from_user.id
     if not _is_owner(sender):
         return await message.reply(
-            f"{Msg.EMOJI_LOCK} <b>Owner only.</b> This command is restricted to the userbot owner.",
+            f"<h1>{Msg.EMOJI_LOCK} Access Denied</h1>\n\n"
+            f"<blockquote>This command is restricted to the userbot owner.</blockquote>",
             parse_mode=ParseMode.HTML,
         )
 
     await message.reply(
-        f"{Msg.EMOJI_LOADING} <b>Restarting...</b>\n"
-        f"╰▸ The process will relaunch in a moment.",
+        f"<h1>{Msg.EMOJI_LOADING} Restarting Process</h1>\n\n"
+        f"<blockquote>Relaunching userbot instance. Please stand by...</blockquote>",
         parse_mode=ParseMode.HTML,
     )
     # Give the reply a moment to flush before we replace the process image.
     await asyncio.sleep(1)
     logger.info("[BOT] Restart requested by owner %s; re-executing process.", sender)
     os.execv(sys.executable, [sys.executable, *sys.argv])
+

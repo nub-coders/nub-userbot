@@ -64,7 +64,7 @@ def render(emoji: str, fallback: Optional[str] = None, index: int = 0) -> str:
     visible = fallback if fallback is not None else emoji
     if document_id is None:
         return visible
-    return f'<emoji id="{document_id}">{visible}</emoji>'
+    return f'<tg-emoji emoji-id="{document_id}">{visible}</tg-emoji>'
 
 
 # Common semantic picks used by the message helper.

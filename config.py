@@ -15,12 +15,14 @@ raw_api_id = os.getenv('API_ID', '').strip()
 API_ID = int(raw_api_id) if raw_api_id.isdigit() else 0
 API_HASH = os.getenv('API_HASH', '')
 
-# AI gateway configuration (Anthropic-compatible)
+# AI gateway configuration (OpenAI-compatible: /v1/chat/completions)
 # Optional: powers the agentic `.ask` command in userbot/ai_agent.py
 # AI_BASE_URL has no default — set it in .env to the gateway you use. Without
 # it the AI features stay off, the same as an absent AI_API_KEY.
 AI_API_KEY = os.getenv('AI_API_KEY', '')
-AI_BASE_URL = os.getenv('AI_BASE_URL', '').rstrip('/')
+# strip('/') also drops a stray leading slash: with one, urlparse finds no host,
+# which silently disables the provider scrubbing in ai_backend.py.
+AI_BASE_URL = os.getenv('AI_BASE_URL', '').strip().strip('/')
 AGENT_MODEL = os.getenv('AGENT_MODEL', 'claude-opus-4-8')
 # Image requests need a vision-capable model. Kept separate from AGENT_MODEL so
 # the fallback chain can't route an image at a text-only model.

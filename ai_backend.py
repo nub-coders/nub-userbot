@@ -1,7 +1,9 @@
-"""AI gateway (Anthropic-compatible) backend with an agentic tool-use loop.
+"""AI gateway backend with an agentic tool-use loop.
 
-The model is given a set of read-only inspection tools plus web search and runs
-the classic ``messages -> tool_use -> tool_result -> messages`` loop until it
+The gateway speaks OpenAI ``/v1/chat/completions``; internally this module keeps
+the Anthropic block shape (``messages -> tool_use -> tool_result -> messages``)
+and translates on the wire in `_to_openai` / `_from_openai`. The model is given a
+set of read-only inspection tools plus web search and runs that loop until it
 produces a final text answer. Shell execution is available but gated behind
 ``AGENT_ALLOW_SHELL`` — see config.py for why it defaults to off.
 
@@ -10,6 +12,7 @@ via ``asyncio.to_thread`` so the Pyrogram event loop keeps serving updates.
 """
 import base64
 import html
+import json
 import logging
 import re
 import shlex
@@ -348,6 +351,89 @@ def _clean_error(text):
     return _scrub(cleaned)
 
 
+def _to_openai(payload):
+    """Translate an Anthropic-shaped payload into an OpenAI chat-completions one.
+
+    Everything else in this module (history, the tool loop, the summarizer)
+    speaks Anthropic content blocks; only the wire format differs, so the
+    translation stays confined to the two functions around `_post`.
+    """
+    messages = [{"role": "system", "content": payload["system"]}]
+    for msg in payload["messages"]:
+        content = msg.get("content")
+        if isinstance(content, str):
+            messages.append({"role": msg["role"], "content": content})
+            continue
+
+        if msg["role"] == "assistant":
+            text = "".join(b.get("text", "") for b in content if b.get("type") == "text")
+            calls = [{
+                "id": b.get("id"),
+                "type": "function",
+                "function": {"name": b.get("name"),
+                             "arguments": json.dumps(b.get("input") or {})},
+            } for b in content if b.get("type") == "tool_use"]
+            out = {"role": "assistant", "content": text or None}
+            if calls:
+                out["tool_calls"] = calls
+            messages.append(out)
+            continue
+
+        # User turn: tool_result blocks become their own `tool` messages, text
+        # and images ride along as multimodal parts of one user message.
+        parts = []
+        for block in content:
+            btype = block.get("type")
+            if btype == "tool_result":
+                messages.append({"role": "tool",
+                                 "tool_call_id": block.get("tool_use_id"),
+                                 "content": str(block.get("content", ""))})
+            elif btype == "image":
+                src = block.get("source", {})
+                parts.append({"type": "image_url", "image_url": {
+                    "url": f"data:{src.get('media_type')};base64,{src.get('data')}"}})
+            elif btype == "text":
+                parts.append({"type": "text", "text": block.get("text", "")})
+        if parts:
+            messages.append({"role": "user", "content": parts})
+
+    body = {
+        "model": payload["model"],
+        "max_tokens": payload["max_tokens"],
+        "messages": messages,
+    }
+    # An empty tools array is rejected by some gateways; omit it instead.
+    if payload.get("tools"):
+        body["tools"] = [{"type": "function", "function": {
+            "name": t["name"],
+            "description": t.get("description", ""),
+            "parameters": t["input_schema"],
+        }} for t in payload["tools"]]
+    return body
+
+
+def _from_openai(data):
+    """Translate a chat-completions response back into Anthropic content blocks."""
+    message = (data.get("choices") or [{}])[0].get("message") or {}
+    blocks = []
+    if message.get("content"):
+        blocks.append({"type": "text", "text": message["content"]})
+    for call in message.get("tool_calls") or []:
+        fn = call.get("function", {})
+        try:
+            args = json.loads(fn.get("arguments") or "{}")
+        except ValueError:
+            # The model can emit invalid JSON; an empty input surfaces as a
+            # normal tool error rather than killing the loop.
+            args = {}
+        blocks.append({"type": "tool_use", "id": call.get("id"),
+                       "name": fn.get("name"), "input": args})
+    return {
+        "content": blocks,
+        "stop_reason": "tool_use" if message.get("tool_calls") else "end_turn",
+    }
+
+
 def _post(messages, tools, model=None, meta=None):
     """Send one messages request, rotating through fallback models on rejection.
 
@@ -368,9 +454,9 @@ def _post(messages, tools, model=None, meta=None):
     for attempt in range(1, 5):
         try:
             resp = requests.post(
-                f"{AI_BASE_URL}/v1/messages",
+                f"{AI_BASE_URL}/v1/chat/completions",
                 headers=HEADERS,
-                json=payload,
+                json=_to_openai(payload),
                 timeout=180,
             )
         except Exception as e:
@@ -382,7 +468,7 @@ def _post(messages, tools, model=None, meta=None):
         if resp.status_code == 200:
             if meta is not None:
                 meta["model"] = model_to_use
-            return resp.json()
+            return _from_openai(resp.json())
 
         last_err = f"AI gateway {resp.status_code}: {_clean_error(resp.text)}"
 

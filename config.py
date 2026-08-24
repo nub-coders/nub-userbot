@@ -23,7 +23,7 @@ AI_API_KEY = os.getenv('AI_API_KEY', '')
 AI_BASE_URL = os.getenv('AI_BASE_URL', '').rstrip('/')
 AGENT_MODEL = os.getenv('AGENT_MODEL', 'claude-opus-4-8')
 # Image requests need a vision-capable model. Kept separate from AGENT_MODEL so
-# cheapest-model auto-selection can't route an image at a text-only model.
+# the fallback chain can't route an image at a text-only model.
 AGENT_VISION_MODEL = os.getenv('AGENT_VISION_MODEL', 'claude-opus-4-8')
 AGENT_MAX_TOKENS = int(os.getenv('AGENT_MAX_TOKENS', '2048'))
 
@@ -34,14 +34,6 @@ AGENT_MAX_ITERATIONS = int(os.getenv('AGENT_MAX_ITERATIONS', '12'))       # tool
 AGENT_MAX_HISTORY = int(os.getenv('AGENT_MAX_HISTORY', '20'))             # per-chat memory cap
 AGENT_AUTO_COMPACT = os.getenv('AGENT_AUTO_COMPACT', 'true').lower() in ('true', '1', 'yes')
 AGENT_COMPACT_THRESHOLD = int(os.getenv('AGENT_COMPACT_THRESHOLD', '14'))
-
-# Model auto-selection: pick the cheapest model the gateway advertises
-AGENT_USE_CHEAPEST_MODEL = os.getenv('AGENT_USE_CHEAPEST_MODEL', 'false').lower() in ('true', '1', 'yes')
-AGENT_PRICING_API_URL = os.getenv(
-    'AGENT_PRICING_API_URL',
-    f'{AI_BASE_URL}/api/pricing' if AI_BASE_URL else '',
-)
-AGENT_MODEL_CACHE_TTL = int(os.getenv('AGENT_MODEL_CACHE_TTL', '3600'))
 
 # Shell access for the agent. Off by default: `.ask` prompts can embed text from
 # replied-to messages written by other people, so letting the model run commands

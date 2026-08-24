@@ -336,7 +336,7 @@ DEFAULT_COMMANDS = {
     'vc0': '**End VC** - End group voice chat call.\n\n**Usage:** `[prefix]vc0`',
     'ask': '**AI Agent** - Ask the AI agent; it can search the web and read files before answering, and remembers the conversation per chat.\n\n**Usage:** `[prefix]ask <question>`',
     'askclear': '**Clear AI Memory** - Forget the AI agent conversation history for this chat.\n\n**Usage:** `[prefix]askclear`',
-    'askmodel': '**AI Model Info** - Show the active AI model and pricing.\n\n**Usage:** `[prefix]askmodel [refresh]`',
+    'askmodel': '**AI Model Info** - Show the active AI model and armed tools.\n\n**Usage:** `[prefix]askmodel`',
     'qt': '**Quote Sticker** - Create quote sticker from message.\n\n**Usage:** `[prefix]qt [reply]`',
     'kang': '**Add Sticker** - Add sticker or photo to custom pack.\n\n**Usage:** `[prefix]kang [reply]`',
     'tiny': '**Tiny Sticker** - Shrink sticker or photo.\n\n**Usage:** `[prefix]tiny [reply]`',

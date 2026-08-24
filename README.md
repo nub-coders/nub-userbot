@@ -111,7 +111,7 @@ All configuration is done through environment variables (or a `.env` file). See 
 ### Optional
 - `BOT_TOKEN` — bot token from [@BotFather](https://t.me/BotFather), enables inline bot features
 - `AI_API_KEY` — API key for the AI gateway, enables the agentic `.ask` command and Word Grid vision
-- `AGENT_MODEL` — model the agent uses (default `claude-opus-4-8`); set `AGENT_USE_CHEAPEST_MODEL=true` to auto-pick the cheapest model instead
+- `AGENT_MODEL` — model the agent uses (default `claude-opus-4-8`)
 - `AGENT_VISION_MODEL` — vision-capable model for image requests (default `claude-opus-4-8`)
 - `AI_BASE_URL` — base URL of your Anthropic-compatible gateway; required alongside `AI_API_KEY`
 - `AGENT_ALLOW_SHELL` — lets the agent run shell commands (default `false`; see the warning under AI Agent Commands)
@@ -157,7 +157,7 @@ All configuration is done through environment variables (or a `.env` file). See 
 ### AI Commands
 - `.ask <question>` - Ask the agent; it can search the web, read files, search the codebase, inspect the current chat, and identify a member from a @handle, an ID, or a stylized display name before answering. Reply to a message to pass it along as context.
 - `.askclear` - Forget the agent's conversation memory for this chat (`.askreset` also works)
-- `.askmodel [refresh]` - Show the active model, how it was selected, its pricing, and whether the shell, moderation, and full-API tools are armed
+- `.askmodel` - Show the active model and whether the shell, moderation, and full-API tools are armed
 
 > Requires `AI_API_KEY` and `AI_BASE_URL`. The agent's shell tool is **off by default** — `.ask` can embed text from other people's messages into the prompt, so enabling `AGENT_ALLOW_SHELL=true` turns that text into a command-injection path. Use `.eval` / `.sh` to run commands yourself instead.
 >

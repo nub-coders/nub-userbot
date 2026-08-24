@@ -17,6 +17,8 @@ from config import (
     AGENT_ALLOW_MODERATION,
     AGENT_ALLOW_SHELL,
     AGENT_ALLOW_TELEGRAM_API,
+    AGENT_MODEL,
+    AGENT_VISION_MODEL,
 )
 from tools import retry, edit_or_reply, styled_error
 from userbot.ai_telegram_tools import build_tool_schemas, build_telegram_tools
@@ -218,34 +220,13 @@ async def ask_clear_handler(client: Client, message: Message):
 @Client.on_message(filters.me & filters.command("askmodel", prefixes=HARDCODED_PREFIXES))
 @retry()
 async def ask_model_handler(client: Client, message: Message):
-    """Show the active model, and refresh the cheapest-model pick on demand."""
+    """Show the active model and which tools are armed."""
     if not ai_backend.is_configured():
         await edit_or_reply(
             message,
             styled_error("`AI_API_KEY` and `AI_BASE_URL` must both be set in your `.env` to use `.ask`."),
         )
         return
-
-    args = message.text.split(maxsplit=1)
-    force_refresh = len(args) > 1 and args[1].strip().lower() in ("refresh", "reload")
-
-    status = await edit_or_reply(message, "🔄 **Fetching model info...**")
-    info = await asyncio.to_thread(ai_backend.get_active_model_info, force_refresh)
-
-    if info.get("is_cheapest"):
-        mode = "Auto (cheapest) 🏆"
-    elif info.get("error"):
-        mode = f"Configured default ⚙️ (pricing lookup failed: {info['error']})"
-    else:
-        mode = "Configured default ⚙️"
-
-    if info.get("prompt_price_1m") or info.get("completion_price_1m"):
-        price = (
-            f"${info['prompt_price_1m']:.4f} in / "
-            f"${info['completion_price_1m']:.4f} out per 1M tokens"
-        )
-    else:
-        price = "N/A"
 
     shell_state = "Enabled ⚠️" if AGENT_ALLOW_SHELL else "Disabled 🔒"
     moderation_state = "Enabled ⚠️" if AGENT_ALLOW_MODERATION else "Disabled 🔒"
@@ -254,16 +235,14 @@ async def ask_model_handler(client: Client, message: Message):
     config_block = (
         f"<b>🤖 Active AI Configuration</b>\n\n"
         f"<blockquote>\n"
-        f"<b>• Model:</b> <code>{info.get('model')}</code>\n"
-        f"<b>• Selection:</b> {mode}\n"
-        f"<b>• Pricing:</b> {price}\n"
+        f"<b>• Model:</b> <code>{AGENT_MODEL}</code>\n"
+        f"<b>• Vision Model:</b> <code>{AGENT_VISION_MODEL}</code>\n"
         f"<b>• Shell Tool:</b> {shell_state}\n"
         f"<b>• Moderation:</b> {moderation_state}\n"
         f"<b>• Telegram API:</b> {api_state}\n"
-        f"</blockquote>\n\n"
-        f"💡 <i>Use <code>.askmodel refresh</code> to re-query provider pricing.</i>"
+        f"</blockquote>"
     )
 
-    await _safe_edit(status, config_block)
+    await edit_or_reply(message, config_block)
 
 

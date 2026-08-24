@@ -32,9 +32,6 @@ from config import (
     AGENT_MAX_HISTORY,
     AGENT_AUTO_COMPACT,
     AGENT_COMPACT_THRESHOLD,
-    AGENT_USE_CHEAPEST_MODEL,
-    AGENT_PRICING_API_URL,
-    AGENT_MODEL_CACHE_TTL,
     AGENT_ALLOW_SHELL,
 )
 
@@ -54,8 +51,8 @@ HEADERS = {
 # Rotated through when the active model is rejected by the gateway.
 FALLBACK_CHAIN = ["claude-opus-4-8", "claude-opus-4-6", "kimi-k3", "gpt-5.5"]
 
-# Image requests need a vision-capable model; the cheapest-model pick and the
-# fallback chain both include models that reject images.
+# Image requests need a vision-capable model; the fallback chain includes models
+# that reject images.
 VISION_MODEL = AGENT_VISION_MODEL
 
 SYSTEM_PROMPT = (
@@ -335,85 +332,8 @@ def build_tool_impls(allow_shell=AGENT_ALLOW_SHELL, extra_tools=None):
 
 # --- Model selection ----------------------------------------------------------
 
-_MODEL_CACHE = {"model": AGENT_MODEL, "expires_at": 0.0, "details": None}
+# Models the gateway has rejected this run; skipped when rotating the fallback chain.
 _FAILED_MODELS = set()
-
-
-def invalidate_model_cache(failed_model=None):
-    """Invalidate the cache and optionally mark a failing model to skip it."""
-    if failed_model:
-        _FAILED_MODELS.add(failed_model)
-    _MODEL_CACHE["expires_at"] = 0.0
-    _MODEL_CACHE["details"] = None
-
-
-def _parse_price(item, group_ratio):
-    """Compute a per-1M-token price estimate for one pricing-list entry."""
-    quota_type = item.get("quota_type", 0)
-    model_ratio = item.get("model_ratio", 0)
-    if quota_type == 0:
-        prompt = 2.0 * group_ratio * model_ratio
-        completion = 2.0 * group_ratio * model_ratio * item.get("completion_ratio", 1.0)
-        return {"name": item.get("model_name", "Unknown"),
-                "prompt_price_1m": prompt, "completion_price_1m": completion,
-                "avg_price_1m": (prompt + completion) / 2.0}
-    call_price = item.get("model_price", 0) / 500000.0
-    return {"name": item.get("model_name", "Unknown"),
-            "prompt_price_1m": call_price, "completion_price_1m": call_price,
-            "avg_price_1m": call_price}
-
-
-def _fetch_cheapest_model_details():
-    """Fetch live pricing data and compute the cheapest working model."""
-    url = AGENT_PRICING_API_URL
-    if url.rstrip("/").endswith("/pricing") and not url.rstrip("/").endswith("/api/pricing"):
-        url = url.rstrip("/").replace("/pricing", "/api/pricing")
-
-    try:
-        resp = requests.get(url, timeout=12)
-        if resp.status_code != 200:
-            raise RuntimeError(f"HTTP {resp.status_code}")
-        data = resp.json()
-        ratio = data.get("group_ratio", {}).get("default", 1.0)
-        candidates = [
-            m for item in data.get("data", [])
-            if (m := _parse_price(item, ratio))["name"] not in _FAILED_MODELS
-        ]
-        if not candidates:
-            raise RuntimeError("no usable models in pricing data")
-        return min(candidates, key=lambda m: m["avg_price_1m"])
-    except Exception as e:
-        logger.warning("Pricing lookup failed (%s); using configured model", e)
-        return {"name": AGENT_MODEL, "prompt_price_1m": 0.0, "completion_price_1m": 0.0,
-                "avg_price_1m": 0.0, "error": _scrub(str(e))}
-
-
-def get_active_model_info(force_refresh=False):
-    """Current model info; caches the cheapest pick when auto-selection is on."""
-    now = time.time()
-    if not AGENT_USE_CHEAPEST_MODEL:
-        return {"model": AGENT_MODEL, "is_cheapest": False,
-                "prompt_price_1m": 0.0, "completion_price_1m": 0.0, "avg_price_1m": 0.0}
-    if not force_refresh and _MODEL_CACHE["expires_at"] > now and _MODEL_CACHE["details"]:
-        return _MODEL_CACHE["details"]
-
-    details = _fetch_cheapest_model_details()
-    info = {
-        "model": details.get("name") or AGENT_MODEL,
-        "is_cheapest": "error" not in details,
-        "prompt_price_1m": details.get("prompt_price_1m", 0.0),
-        "completion_price_1m": details.get("completion_price_1m", 0.0),
-        "avg_price_1m": details.get("avg_price_1m", 0.0),
-        "error": details.get("error"),
-    }
-    _MODEL_CACHE["model"] = info["model"]
-    _MODEL_CACHE["expires_at"] = now + AGENT_MODEL_CACHE_TTL
-    _MODEL_CACHE["details"] = info
-    return info
-
-
-def get_active_model_name():
-    return get_active_model_info().get("model", AGENT_MODEL)
 
 
 # --- Core request + agentic loop ----------------------------------------------
@@ -435,7 +355,7 @@ def _post(messages, tools, model=None, meta=None):
     ``model`` -- callers use it to show what served the request, which may not
     be the model they asked for.
     """
-    model_to_use = model or get_active_model_name()
+    model_to_use = model or AGENT_MODEL
     payload = {
         "model": model_to_use,
         "max_tokens": AGENT_MAX_TOKENS,
@@ -469,7 +389,7 @@ def _post(messages, tools, model=None, meta=None):
         if resp.status_code in (400, 404, 405, 429):
             logger.warning("Model %s failed with status %s; rotating fallback model",
                            model_to_use, resp.status_code)
-            invalidate_model_cache(failed_model=model_to_use)
+            _FAILED_MODELS.add(model_to_use)
             next_model = None
             for candidate in FALLBACK_CHAIN:
                 if candidate not in _FAILED_MODELS:

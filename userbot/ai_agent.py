@@ -108,14 +108,14 @@ def _format_answer(message: Message, answer: str, model: str = "") -> str:
     return "\n\n".join(parts)
 
 
-@Client.on_message(filters.me & filters.command("ask", prefixes=HARDCODED_PREFIXES))
+@Client.on_message(filters.me & filters.command(["ask", "ai"], prefixes=HARDCODED_PREFIXES))
 @retry()
 async def ask_handler(client: Client, message: Message):
     """Answer a question with the agentic tool-use loop."""
     if not ai_backend.is_configured():
         await edit_or_reply(
             message,
-            styled_error("`AI_API_KEY` and `AI_BASE_URL` must both be set in your `.env` to use `.ask`."),
+            styled_error("`AI_API_KEY` and `AI_BASE_URL` must both be set in your `.env` to use `.ai` / `.ask`."),
         )
         return
 
@@ -123,7 +123,7 @@ async def ask_handler(client: Client, message: Message):
     if not query:
         await edit_or_reply(
             message,
-            styled_error("Provide a question or reply to a message.\n\n**Usage:** `.ask <question>`"),
+            styled_error("Provide a question or reply to a message.\n\n**Usage:** `.ai <question>` or `.ask <question>`"),
         )
         return
 
@@ -207,7 +207,7 @@ async def _safe_edit(message: Message, text: str):
         logger.debug("Status edit failed: %s", e)
 
 
-@Client.on_message(filters.me & filters.command(["askclear", "askreset"], prefixes=HARDCODED_PREFIXES))
+@Client.on_message(filters.me & filters.command(["askclear", "askreset", "aiclear", "aireset"], prefixes=HARDCODED_PREFIXES))
 @retry()
 async def ask_clear_handler(client: Client, message: Message):
     """Forget the agent's conversation memory for this chat."""
@@ -217,14 +217,14 @@ async def ask_clear_handler(client: Client, message: Message):
         await edit_or_reply(message, "🧹 **Chat memory is already empty.**")
 
 
-@Client.on_message(filters.me & filters.command("askmodel", prefixes=HARDCODED_PREFIXES))
+@Client.on_message(filters.me & filters.command(["askmodel", "aimodel"], prefixes=HARDCODED_PREFIXES))
 @retry()
 async def ask_model_handler(client: Client, message: Message):
     """Show the active model and which tools are armed."""
     if not ai_backend.is_configured():
         await edit_or_reply(
             message,
-            styled_error("`AI_API_KEY` and `AI_BASE_URL` must both be set in your `.env` to use `.ask`."),
+            styled_error("`AI_API_KEY` and `AI_BASE_URL` must both be set in your `.env` to use `.ai` / `.ask`."),
         )
         return
 

@@ -77,8 +77,27 @@ def test_from_openai():
     assert _from_openai({}) == {"content": [], "stop_reason": "end_turn"}
 
 
+def test_invalid_json_handling():
+    from unittest.mock import patch, MagicMock
+    import ai_backend
+    from ai_backend import _post, AgentError
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.text = ""
+    mock_resp.json.side_effect = json.JSONDecodeError("Expecting value", "", 0)
+
+    with patch("requests.post", return_value=mock_resp):
+        try:
+            _post([{"role": "user", "content": "hi"}], [])
+            assert False, "Should have raised AgentError"
+        except AgentError as e:
+            assert "invalid response" in str(e)
+
+
 if __name__ == "__main__":
     test_to_openai()
     test_to_openai_image_and_no_tools()
     test_from_openai()
+    test_invalid_json_handling()
     print("ok")

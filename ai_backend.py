@@ -466,9 +466,26 @@ def _post(messages, tools, model=None, meta=None):
             continue
 
         if resp.status_code == 200:
+            try:
+                data = resp.json()
+            except (json.JSONDecodeError, ValueError) as e:
+                last_err = f"AI gateway returned invalid response (HTTP 200 but invalid JSON): {_clean_error(resp.text or '[empty response]')}"
+                logger.warning("Model %s status 200 but invalid JSON: %s", model_to_use, e)
+                _FAILED_MODELS.add(model_to_use)
+                next_model = None
+                for candidate in FALLBACK_CHAIN:
+                    if candidate not in _FAILED_MODELS:
+                        next_model = candidate
+                        break
+                if next_model is None:
+                    raise AgentError(last_err)
+                model_to_use = next_model
+                payload["model"] = model_to_use
+                time.sleep(1.0)
+                continue
             if meta is not None:
                 meta["model"] = model_to_use
-            return _from_openai(resp.json())
+            return _from_openai(data)
 
         last_err = f"AI gateway {resp.status_code}: {_clean_error(resp.text)}"
 

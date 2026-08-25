@@ -7,6 +7,10 @@ import os
 import io
 import logging
 import re
+import shutil
+import subprocess
+import textwrap
+import uuid
 from typing import Any, Dict, List, Optional
 from PIL import Image
 from pyrogram import Client, filters
@@ -20,6 +24,67 @@ from tools import *
 from utils.message import Msg
 
 logger = logging.getLogger("userbot")
+
+
+def _meme_cache_dir():
+    """Scratch + output dir for meme rendering.
+
+    Keeps generated files out of the repo root, where fixed names collided
+    between concurrent renders and piled up next to the source tree.
+    """
+    path = os.path.join(os.getcwd(), "cache")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _meme_font_path():
+    candidates = ["default.ttf"]
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates.append(os.path.join(base_dir, "default.ttf"))
+    candidates.append(os.path.join(os.path.dirname(base_dir), "default.ttf"))
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    raise RuntimeError(
+        "default.ttf was not found in the working directory, "
+        f"{base_dir} or {os.path.dirname(base_dir)}."
+    )
+
+
+def _probe_video_size(image_path):
+    """Best-effort (width, height) for a video, falling back to 512x512."""
+    if shutil.which("ffprobe"):
+        try:
+            out = subprocess.check_output([
+                "ffprobe", "-v", "error", "-select_streams", "v:0",
+                "-show_entries", "stream=width,height", "-of", "json", image_path,
+            ])
+            streams = json.loads(out).get("streams", [])
+            if streams and streams[0].get("width") and streams[0].get("height"):
+                return int(streams[0]["width"]), int(streams[0]["height"])
+        except Exception as e:
+            logger.warning(f"[add_text_img] ffprobe probe failed: {e}")
+
+    try:
+        info = MediaInfo.parse(image_path)
+        track = next((t for t in info.tracks if t.track_type == "Video"), None)
+        if track and track.width and track.height:
+            return int(track.width), int(track.height)
+    except Exception as e:
+        logger.warning(f"[add_text_img] pymediainfo probe failed: {e}")
+
+    try:
+        cap = cv2.VideoCapture(str(image_path))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        cap.release()
+        if width > 0 and height > 0:
+            return width, height
+    except Exception as e:
+        logger.warning(f"[add_text_img] cv2 probe failed: {e}")
+
+    logger.warning(f"[add_text_img] could not probe {image_path}, assuming 512x512")
+    return 512, 512
 
 
 
@@ -94,21 +159,38 @@ async def memify(client, message):
     if not reply_message.media:
         await message.edit_text( "**Reply to any photo or sticker!**")
         return
-    file = await client.download_media(reply_message)
-    NUB = await message.edit_text( "`Processing . . .`")
     text = get_arg(message)
     if len(text) < 1:
-        return await msg.edit(f"Please use `/mmf <text>`")
-    meme = await add_text_img(file, text)
-    await asyncio.gather(
-        NUB.delete(),
-        client.send_sticker(
+        return await message.edit_text("**Please use** `mmf <top text>;<bottom text>`")
+    NUB = await message.edit_text( "`Processing . . .`")
+    file = await client.download_media(reply_message)
+    if not file:
+        return await NUB.edit_text("**Failed to download the replied media!**")
+    meme = None
+    try:
+        meme = await add_text_img(file, text)
+        await client.send_sticker(
             message.chat.id,
             sticker=meme,
             reply_to_message_id=reply_message.id,
-        ),
-    )
-    os.remove(meme)
+        )
+        await NUB.delete()
+    except Exception as e:
+        logger.error(f"[memify] Error: {e}")
+        try:
+            await NUB.edit_text(f"**Failed to create meme:** `{e}`")
+        except Exception:
+            pass
+    finally:
+        # Both the download and the render must go even when send_sticker
+        # raises (file too large, forbidden, flood wait) -- the cleanup used to
+        # sit on the success path only and leaked the download every time.
+        for path in (meme, file):
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
 async def add_text_img(image_path, text):
     font_size = 12
@@ -119,27 +201,12 @@ async def add_text_img(image_path, text):
         upper_text = text
         lower_text = ""
 
-    font_path = "default.ttf"
-    if not os.path.exists(font_path):
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        font_path = os.path.join(base_dir, "default.ttf")
-        if not os.path.exists(font_path):
-            font_path = os.path.join(os.path.dirname(base_dir), "default.ttf")
+    font_path = _meme_font_path()
 
     is_video = str(image_path).endswith((".webm", ".mp4", ".mkv", ".mov"))
 
     if is_video:
-        import subprocess
-        import json
-
-        probe_cmd = [
-            "ffprobe", "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=width,height", "-of", "json", image_path
-        ]
-        out = subprocess.check_output(probe_cmd)
-        probe_data = json.loads(out)
-        image_width = probe_data["streams"][0]["width"]
-        image_height = probe_data["streams"][0]["height"]
+        image_width, image_height = _probe_video_size(image_path)
 
         overlay = Image.new("RGBA", (image_width, image_height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
@@ -182,26 +249,37 @@ async def add_text_img(image_path, text):
                 )
                 y += line_height
 
-        overlay_temp = f"temp_overlay_{os.getpid()}.png"
+        meme_dir = _meme_cache_dir()
+        overlay_temp = os.path.join(meme_dir, f"temp_overlay_{uuid.uuid4().hex[:8]}.png")
         overlay.save(overlay_temp)
 
-        final_video = os.path.join("memify.webm")
-        ffmpeg_cmd = [
-            "ffmpeg", "-y",
-            "-i", image_path,
-            "-i", overlay_temp,
-            "-filter_complex", "[0:v][1:v]overlay=0:0",
-            "-c:v", "libvpx-vp9",
-            "-pix_fmt", "yuva420p",
-            "-b:v", "500k",
-            "-an",
-            "-t", "3",
-            final_video
-        ]
-        subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if os.path.exists(overlay_temp):
-            os.remove(overlay_temp)
-        return final_video
+        if not shutil.which("ffmpeg"):
+            if os.path.exists(overlay_temp):
+                os.remove(overlay_temp)
+            raise RuntimeError(
+                "ffmpeg is not installed on this system. "
+                "Please install ffmpeg to create video memes."
+            )
+
+        final_video = os.path.join(meme_dir, f"memify_{uuid.uuid4().hex[:8]}.webm")
+        try:
+            ffmpeg_cmd = [
+                "ffmpeg", "-y",
+                "-i", image_path,
+                "-i", overlay_temp,
+                "-filter_complex", "[0:v][1:v]overlay=0:0",
+                "-c:v", "libvpx-vp9",
+                "-pix_fmt", "yuva420p",
+                "-b:v", "500k",
+                "-an",
+                "-t", "3",
+                final_video
+            ]
+            subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return final_video
+        finally:
+            if os.path.exists(overlay_temp):
+                os.remove(overlay_temp)
 
     img = Image.open(image_path).convert("RGBA")
     img_info = img.info
@@ -246,7 +324,7 @@ async def add_text_img(image_path, text):
             )
             y += line_height
 
-    final_image = os.path.join("memify.webp")
+    final_image = os.path.join(_meme_cache_dir(), f"memify_{uuid.uuid4().hex[:8]}.webp")
     img.save(final_image, **{str(k): v for k, v in img_info.items()})
     return final_image
 

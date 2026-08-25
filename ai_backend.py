@@ -401,6 +401,7 @@ def _to_openai(payload):
         "model": payload["model"],
         "max_tokens": payload["max_tokens"],
         "messages": messages,
+        "stream": False,
     }
     # An empty tools array is rejected by some gateways; omit it instead.
     if payload.get("tools"):
@@ -410,6 +411,63 @@ def _to_openai(payload):
             "parameters": t["input_schema"],
         }} for t in payload["tools"]]
     return body
+
+
+def _parse_sse(text):
+    """Reassemble Server-Sent Events (SSE) stream lines into a completion dict."""
+    full_content = []
+    tool_calls_dict = {}
+
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+        data_str = line[5:].strip()
+        if data_str == "[DONE]" or not data_str:
+            continue
+        try:
+            chunk = json.loads(data_str)
+        except Exception:
+            continue
+
+        choices = chunk.get("choices") or []
+        if not choices:
+            continue
+        delta = choices[0].get("delta") or {}
+
+        if delta.get("content"):
+            full_content.append(delta["content"])
+
+        for tc in delta.get("tool_calls") or []:
+            idx = tc.get("index", 0)
+            if idx not in tool_calls_dict:
+                tool_calls_dict[idx] = {"id": tc.get("id", f"call_{idx}"), "name": "", "arguments": ""}
+            fn = tc.get("function") or {}
+            if fn.get("name"):
+                tool_calls_dict[idx]["name"] += fn["name"]
+            if fn.get("arguments"):
+                tool_calls_dict[idx]["arguments"] += fn["arguments"]
+
+    calls = [
+        {
+            "id": item["id"],
+            "type": "function",
+            "function": {"name": item["name"], "arguments": item["arguments"]},
+        }
+        for item in tool_calls_dict.values()
+    ]
+
+    return {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "".join(full_content) or None,
+                    "tool_calls": calls or None,
+                }
+            }
+        ]
+    }
 
 
 def _from_openai(data):
@@ -450,11 +508,14 @@ def _post(messages, tools, model=None, meta=None):
         "messages": messages,
     }
 
+    base_url = AI_BASE_URL.rstrip('/')
+    endpoint = f"{base_url}/chat/completions" if base_url.endswith("/v1") else f"{base_url}/v1/chat/completions"
+
     last_err = ""
     for attempt in range(1, 5):
         try:
             resp = requests.post(
-                f"{AI_BASE_URL}/v1/chat/completions",
+                endpoint,
                 headers=HEADERS,
                 json=_to_openai(payload),
                 timeout=180,
@@ -466,23 +527,29 @@ def _post(messages, tools, model=None, meta=None):
             continue
 
         if resp.status_code == 200:
-            try:
-                data = resp.json()
-            except (json.JSONDecodeError, ValueError) as e:
-                last_err = f"AI gateway returned invalid response (HTTP 200 but invalid JSON): {_clean_error(resp.text or '[empty response]')}"
-                logger.warning("Model %s status 200 but invalid JSON: %s", model_to_use, e)
-                _FAILED_MODELS.add(model_to_use)
-                next_model = None
-                for candidate in FALLBACK_CHAIN:
-                    if candidate not in _FAILED_MODELS:
-                        next_model = candidate
-                        break
-                if next_model is None:
-                    raise AgentError(last_err)
-                model_to_use = next_model
-                payload["model"] = model_to_use
-                time.sleep(1.0)
-                continue
+            if resp.text and resp.text.strip().startswith("data:"):
+                data = _parse_sse(resp.text)
+            else:
+                try:
+                    data = resp.json()
+                except (json.JSONDecodeError, ValueError) as e:
+                    if resp.text and "data:" in resp.text:
+                        data = _parse_sse(resp.text)
+                    else:
+                        last_err = f"AI gateway returned invalid response (HTTP 200 but invalid JSON): {_clean_error(resp.text or '[empty response]')}"
+                        logger.warning("Model %s status 200 but invalid JSON: %s", model_to_use, e)
+                        _FAILED_MODELS.add(model_to_use)
+                        next_model = None
+                        for candidate in FALLBACK_CHAIN:
+                            if candidate not in _FAILED_MODELS:
+                                next_model = candidate
+                                break
+                        if next_model is None:
+                            raise AgentError(last_err)
+                        model_to_use = next_model
+                        payload["model"] = model_to_use
+                        time.sleep(1.0)
+                        continue
             if meta is not None:
                 meta["model"] = model_to_use
             return _from_openai(data)

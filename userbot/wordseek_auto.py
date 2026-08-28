@@ -437,7 +437,7 @@ async def auto_play_handler(client: Client, message: Message):
         await play_game_loop(client, chat_id)
 
 
-@Client.on_message(filters.command('gameinfo', prefixes=HARDCODED_PREFIXES))
+@Client.on_message(filters.command('gameinfo', prefixes=HARDCODED_PREFIXES) & filters.me)
 async def show_game_info(client: Client, message: Message):
     """Show current game information"""
     chat_id = message.chat.id

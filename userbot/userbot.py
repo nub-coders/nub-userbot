@@ -262,6 +262,21 @@ async def auto_download_media(client, message: Message):
 
         logger.info(f"Downloading {media_type} from user {sender_id} (Size: {media_size} bytes)")
 
+        # Work out where this is going *before* spending up to 100MB of download
+        # on it. The docstring promises "only unread media", but the check for
+        # that sat after the download, so every already-read or self-sent file in
+        # a DM was fetched in full and then deleted unused -- bandwidth and disk
+        # churn that anyone who can DM the account could drive by re-sending.
+        app_client = apps.get("app")
+        app_me_id = getattr(getattr(app_client, "me", None), "id", None) if app_client else None
+        should_save = bool(not is_self_message and message.unread_media)
+        should_forward = bool(app_me_id and app_me_id != client.me.id)
+        if not (should_save or should_forward):
+            logger.debug(
+                "Skipping %s from user %s: nothing to send it to", media_type, sender_id
+            )
+            return
+
         # Download the file
         file_path = await message.download(f"{user_dir}/")
         if not file_path:
@@ -300,7 +315,7 @@ async def auto_download_media(client, message: Message):
 
         try:
             # Send to saved messages only if not self-message and media is unread
-            if not is_self_message and message.unread_media:
+            if should_save:
                 kwargs = {
                     'chat_id': client.me.id,
                     media_type: file_path
@@ -327,9 +342,7 @@ async def auto_download_media(client, message: Message):
                     os.remove(thumb_path)
 
             # Send to main bot (app.me.id) if main_bot client exists
-            app_client = apps.get("app")
-            app_me_id = getattr(getattr(app_client, "me", None), "id", None) if app_client else None
-            if app_me_id and app_me_id != client.me.id:
+            if should_forward:
                 kwargs = {
                     'chat_id': app_me_id,
                     media_type: file_path

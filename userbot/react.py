@@ -24,10 +24,39 @@ mentioned_me = filters.create(_mentioned_me)
 
 react_emojis = ['👍', '♥️', '🔥', '🎉']
 
-@Client.on_message(mentioned_me & ~filters.bot, group=1)
+# Anyone who can post can mention the account, and each mention used to cost a
+# get_me(), a session lookup, an uncached get_chat() and a send_reaction with
+# nothing in between. Repeated mentions therefore turned into unthrottled API
+# traffic, and the FloodWait that follows was swallowed by the bare `except`
+# below, so the account carried on hammering instead of backing off. Reactions
+# are decoration: one per chat per cooldown is plenty.
+_REACT_COOLDOWN = 10
+_last_react = {}
+
+
+def _react_allowed(chat_id, now=None):
+    """True when this chat is outside its cooldown; records the attempt."""
+    now = now if now is not None else time.time()
+    if now - _last_react.get(chat_id, 0) < _REACT_COOLDOWN:
+        return False
+    # Keyed by a value strangers choose, so drop stale entries rather than let the
+    # map grow for every chat the account is ever mentioned in.
+    if len(_last_react) > 512:
+        for stale in [c for c, t in _last_react.items() if now - t > _REACT_COOLDOWN * 10]:
+            _last_react.pop(stale, None)
+    _last_react[chat_id] = now
+    return True
+
+
+@Client.on_message(mentioned_me & ~filters.bot & ~filters.me, group=1)
 async def auto_react_handler(client: Client, message: Message):
     try:
-        user = await client.get_me()
+        if not _react_allowed(message.chat.id):
+            return
+
+        # `client.me` is already cached on the client; get_me() was a round trip
+        # per mention.
+        user = client.me
         user_data = user_sessions.find_one({"user_id": user.id})
         if not user_data:
             return
@@ -68,6 +97,14 @@ async def auto_react_handler(client: Client, message: Message):
                                    message_id=message.id,
                                    emoji=emoji_to_send)
 
+    except FloodWait as e:
+        # Hold this chat off for as long as Telegram asked, instead of retrying on
+        # the next mention and deepening the limit.
+        _last_react[message.chat.id] = time.time() + getattr(e, "value", 0)
+        logger.warning(
+            "[REACTION] FloodWait %ss in chat %s; pausing reactions there",
+            getattr(e, "value", "?"), message.chat.id,
+        )
     except Exception as e:
         logger.error(f"[REACTION] Auto-react error for user {client.me.id}: {e}")
 

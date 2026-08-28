@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+import sys
 
 from pyrogram import Client, idle
 from convopyro import Conversation
@@ -17,8 +18,18 @@ logger = logging.getLogger("userbot")
 print("Starting Userbot...")
 
 async def main():
-    # Get session string from environment or user input
-    session_string = SESSION_STR if SESSION_STR else input("Enter your Pyrogram session string: ")
+    # Get session string from environment, or prompt when a human is attached.
+    # `input()` unconditionally was a trap under Docker or a service manager:
+    # stdin is not a tty there, and the os.execv restarts in userbot/update.py
+    # and bot/botcmds.py re-enter this line, where a prompt either raises
+    # EOFError or blocks forever on a pipe. Say what is missing instead.
+    if SESSION_STR:
+        session_string = SESSION_STR
+    elif sys.stdin.isatty():
+        session_string = input("Enter your Pyrogram session string: ")
+    else:
+        print("SESSION_STR is not set and stdin is not a terminal -- set it in .env.")
+        raise SystemExit(1)
 
     # Initialize bot client with bot-specific plugins only. The bot is optional —
     # it only powers inline/special-group features. Skip it entirely when no
@@ -66,8 +77,18 @@ async def main():
             except Exception as e:
                 print(f"Bot client failed to start (continuing without it): {e}")
 
-        # Start userbot client
-        await userbot.start()
+        # Start userbot client. Unlike the bot above, this client is the whole
+        # point of the process, so a failure here has to end it: exit non-zero
+        # rather than fall through to idle(). Idling with zero handlers looks
+        # perfectly healthy from outside -- the process is up and never exits --
+        # so compose's `restart: unless-stopped` never fires and the userbot
+        # stays silently down until somebody notices by hand.
+        try:
+            await userbot.start()
+        except Exception as e:
+            print(f"Userbot client failed to start: {e}")
+            raise SystemExit(1)
+
         print(f"Userbot started successfully!")
         print(f"Userbot logged in as: {userbot.me.first_name} (@{userbot.me.username})")
 
@@ -85,7 +106,11 @@ async def main():
             print(f"Loaded {len(loaded_extra_plugins)} extra plugin(s): {', '.join(loaded_extra_plugins)}")
 
     except Exception as e:
-        print(f"Error starting clients: {e}")
+        # Reached only for the bookkeeping after a successful start (sudo list,
+        # extra plugins). Those are not worth refusing to run over -- the client
+        # is connected and its handlers are registered. SystemExit is a
+        # BaseException, so a failed start above passes straight through.
+        print(f"Error after starting clients: {e}")
     await idle()
 
 if __name__ == "__main__":

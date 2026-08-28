@@ -330,7 +330,7 @@ async def play_handler_func(client, message):
     os.makedirs(user_dir, exist_ok=True)
     by = message.from_user
     escaped_prefixes = '|'.join(re.escape(p) for p in HARDCODED_PREFIXES)
-    command_match = re.match(rf"^({escaped_prefixes})(\w+)", message.text or "")
+    command_match = re.match(rf"^({escaped_prefixes})(\w+)", cmd_text(message))
     command = command_match.group(2).lower() if command_match else ""
     mode = "video" if command.startswith("v") else "audio"
     force_play = command.endswith("force")
@@ -345,7 +345,7 @@ async def play_handler_func(client, message):
         return
 
     youtube_link = None
-    input_text = message.text.split(" ", 1)
+    input_text = cmd_text(message).split(" ", 1)
 
     song_queue = queues.get(f"dic_{client.me.id}")
     if not song_queue:
@@ -594,7 +594,7 @@ async def loop_handler_func(client, message):
 
     try:
         # Get loop count from command
-        command_parts = message.text.split()
+        command_parts = cmd_text(message).split()
         if len(command_parts) != 2:
             await client.send_message(
                 message.chat.id,

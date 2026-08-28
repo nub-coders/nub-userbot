@@ -9,7 +9,7 @@ from collections import Counter
 from functools import lru_cache
 from pyrogram import Client, filters
 from pyrogram.types import Message
-from tools import HARDCODED_PREFIXES
+from tools import HARDCODED_PREFIXES, cmd_text
 from utils.message import Msg
 import ai_backend
 
@@ -662,7 +662,7 @@ async def manual_grid(client: Client, message: Message):
         MSOREDSS
         AYYVVDLQ
     """
-    text = message.text or ""
+    text = cmd_text(message)
     parts = text.split(None, 1)
     grid_text = parts[1].strip() if len(parts) > 1 else ""
 

@@ -13,7 +13,7 @@ async def help_handler(client, message):
     """Shows detailed command usage — .help <command> or .help for categories overview"""
     try:
         # Detect user's prefix from the message
-        prefix = message.text[0] if message.text else "."
+        prefix = cmd_text(message)[:1] or "."
 
         raw_args = get_args(message)
 

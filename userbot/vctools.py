@@ -30,7 +30,9 @@ current_dir = os.getcwd()
 
 
 def get_arg(message):
-    msg = message.text
+    msg = cmd_text(message)
+    if len(msg) < 2:
+        return ""
     msg = msg.replace(" ", "", 1) if msg[1] == " " else msg
     split = msg[1:].replace("\n", " \n").split(" ")
     if " ".join(split[1:]).strip() == "":
@@ -40,13 +42,12 @@ def get_arg(message):
 @Client.on_message(filters.command("vc1", prefixes=HARDCODED_PREFIXES) & filters.me & filters.group)
 @retry()
 async def opengc(client, message):
-    flags = " ".join(message.command[1:])
     vctitle = get_arg(message)
-    if flags == enums.ChatType.CHANNEL:
-        chat_id = message.chat.title
-    else:
-        chat_id = message.chat.id
-    args = "**Started Group Call"
+    # `flags` was compared against ChatType.CHANNEL, but it held a string and
+    # ChatType.CHANNEL is an enum member, so the comparison was always False;
+    # the branch it guarded assigned chat.title (a string) to chat_id, which
+    # resolve_peer cannot use. The chat id is always the right peer here.
+    chat_id = message.chat.id
     try:
         if not vctitle:
             await client.invoke(
@@ -56,7 +57,6 @@ CreateGroupCall(
             )
 )
         else:
-            args += f"\n • **Title:** `{vctitle}`"
             await client.invoke(
                 CreateGroupCall(
                     peer=(await client.resolve_peer(chat_id)),
@@ -64,11 +64,11 @@ CreateGroupCall(
                     title=vctitle,
                 )
             )
-        title_info = f" with title '<code>{vctitle}</code>'" if vctitle else ""
+        title_info = f" with title '<code>{html_esc(vctitle)}</code>'" if vctitle else ""
         await message.edit(styled_success(f"Group Voice Chat started{title_info}."))
     except Exception as e:
         logger.error(f"Failed to start group call: {e}")
-        await message.edit(styled_error(f"Failed to start group call: {e}"))
+        await message.edit(styled_error("Failed to start the group call.", details=str(e)))
 
 
 @Client.on_message(filters.command("vc0", prefixes=HARDCODED_PREFIXES) & filters.me & filters.group)
@@ -95,7 +95,7 @@ async def end_group_call(client, message):
         await message.edit_text(styled_error("No active group call found in this chat."))
     except Exception as e:
         logger.warning(f"End group call failed: {e}")
-        await message.edit_text(styled_error(f"Failed to end group call: {e}"))
+        await message.edit_text(styled_error("Failed to end the group call.", details=str(e)))
 
 
 

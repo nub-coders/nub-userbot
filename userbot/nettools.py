@@ -13,7 +13,7 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 from tools import (
     HARDCODED_PREFIXES, edit_or_reply, sudoers_filter, retry,
-    get_args_from_caret, styled_error
+    get_args_from_caret, styled_error, cmd_text
 )
 
 logger = logging.getLogger("userbot")
@@ -170,7 +170,7 @@ def _expand_percentages(expression: str) -> str:
 # HTTP ping (latency test)
 @Client.on_message(filters.command("pingurl", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 async def http_ping(client: Client, message: Message):
-    args = message.text.split(maxsplit=1)
+    args = cmd_text(message).split(maxsplit=1)
     url = args[1] if len(args) > 1 else "https://google.com"
     if not _is_owner(message):
         refusal = await _reject_internal_target(urlparse(url).hostname)
@@ -198,7 +198,7 @@ async def http_ping(client: Client, message: Message):
 # TCP connectivity test
 @Client.on_message(filters.command("tcp", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 async def tcp_test(client: Client, message: Message):
-    args = message.text.split()
+    args = cmd_text(message).split()
     if len(args) < 3:
         await edit_or_reply(message, styled_error("Invalid format", hint=f"Usage: <code>{HARDCODED_PREFIXES[0]}tcp &lt;host&gt; &lt;port&gt;</code>"))
         return

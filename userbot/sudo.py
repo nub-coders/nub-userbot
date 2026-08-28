@@ -19,7 +19,7 @@ async def resolve_target_id(message):
         await message.reply("The replied message is not from a user.")
         return None
 
-    command_parts = message.text.split()
+    command_parts = cmd_text(message).split()
     if len(command_parts) > 1:
         try:
             return int(command_parts[1]), None

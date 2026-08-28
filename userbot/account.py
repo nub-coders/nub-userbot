@@ -202,7 +202,7 @@ async def session_handler(client, message):
 @Client.on_message(filters.command("bio", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def set_bio(client, message):
-    args = message.text.split(maxsplit=1)
+    args = cmd_text(message).split(maxsplit=1)
     if len(args) < 2:
         return await message.edit(styled_error("Usage: `.bio <text>` (max 70 chars)"))
     bio = args[1]

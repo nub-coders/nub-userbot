@@ -6,7 +6,7 @@ from pyrogram.errors import UserAdminInvalid, ChatAdminRequired
 from pyrogram.types import Message, ChatPermissions
 from tools import (
     HARDCODED_PREFIXES, edit_or_reply, styled_error, styled_success,
-    sudoers_filter, retry, can_grant_privilege
+    sudoers_filter, retry, can_grant_privilege, cmd_text
 )
 from utils.message import Msg
 
@@ -82,7 +82,7 @@ async def ban_handler(client: Client, message: Message):
         await message.reply(Msg.ERR_ADMIN_REQUIRED)
         return
     
-    parts = message.text.split()
+    parts = cmd_text(message).split()
     target_user = await get_target_user(client, message, parts)
     
     if not target_user:
@@ -112,7 +112,7 @@ async def kick_handler(client: Client, message: Message):
         await message.reply(Msg.ERR_ADMIN_REQUIRED)
         return
 
-    parts = message.text.split()
+    parts = cmd_text(message).split()
     target_user = await get_target_user(client, message, parts)
 
     if not target_user:
@@ -146,7 +146,7 @@ async def mute_handler(client: Client, message: Message):
         await message.reply(Msg.ERR_ADMIN_REQUIRED)
         return
     
-    parts = message.text.split()
+    parts = cmd_text(message).split()
     target_user = await get_target_user(client, message, parts)
     
     if not target_user:
@@ -187,7 +187,7 @@ async def unmute_handler(client: Client, message: Message):
         await message.reply(Msg.ERR_ADMIN_REQUIRED)
         return
 
-    parts = message.text.split()
+    parts = cmd_text(message).split()
     target_user = await get_target_user(client, message, parts)
 
     if not target_user:
@@ -232,7 +232,7 @@ async def promote_handler(client: Client, message: Message):
         await message.reply(Msg.ERR_ADMIN_REQUIRED)
         return
     
-    parts = message.text.split()
+    parts = cmd_text(message).split()
     target_user = await get_target_user(client, message, parts)
     
     if not target_user:
@@ -344,7 +344,7 @@ async def unban_handler(client: Client, message: Message):
         await message.reply(Msg.ERR_ADMIN_REQUIRED)
         return
     
-    parts = message.text.split()
+    parts = cmd_text(message).split()
     target_user = await get_target_user(client, message, parts)
     
     if not target_user:
@@ -375,7 +375,7 @@ async def pin_handler(client: Client, message: Message):
             await message.reply("Reply to a message to pin it")
             return
             
-        parts = message.text.split()
+        parts = cmd_text(message).split()
         disable_notification = "-s" not in parts and "--sound" not in parts
         
         await client.pin_chat_message(
@@ -401,7 +401,7 @@ async def unpin_handler(client: Client, message: Message):
         return
     
     try:
-        parts = message.text.split()
+        parts = cmd_text(message).split()
         
         if "-a" in parts or "--all" in parts:
             await client.unpin_all_chat_messages(chat_id=message.chat.id)

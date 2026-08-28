@@ -27,13 +27,14 @@ RESULT = "<b>⚡ Eval Completed</b>\n\n<blockquote expandable><b>Expression:</b>
 async def eval_expression(client, message):
     
     # Extract the raw text after the command prefix
-    if not message.text or len(message.command) < 2:
+    body = cmd_text(message)
+    if not body or len(message.command) < 2:
         await message.reply("Please provide code to evaluate.")
         return
-    
+
     # Get full text after command
-    if " " in message.text:
-        full_command = message.text.split(" ", 1)[1]
+    if " " in body:
+        full_command = body.split(" ", 1)[1]
     else:
         full_command = ""
     

@@ -29,8 +29,8 @@ async def afk_handler(client, message):
 
 @Client.on_message(filters.command("afk", prefixes=HARDCODED_PREFIXES) & filters.me)
 async def afk(client, message):
-    if len(message.text.split()) >= 2:
-        reason = message.text.split(" ", maxsplit=1)[1]
+    if len(cmd_text(message).split()) >= 2:
+        reason = cmd_text(message).split(" ", maxsplit=1)[1]
     else:
         reason = "None"
 

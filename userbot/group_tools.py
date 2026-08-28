@@ -24,7 +24,7 @@ def mention_markdown(user_id, name):
 async def promote_user(client, message):
     chat_id = message.chat.id
     user_id = message.reply_to_message.from_user.id
-    command_parts = message.text.split()
+    command_parts = cmd_text(message).split()
     if len(command_parts) >= 2:
         promotion_type = command_parts[1].lower()
         title= 'admin'
@@ -114,7 +114,7 @@ def get_args(message):
 @retry()
 async def inv(client, message):
     sender = client.me.id
-    text = message.text.split(" ", 1)
+    text = cmd_text(message).split(" ", 1)
     if len(text) < 2 or not text[1].strip():
         # text[1] was read unconditionally, so a bare .inv raised IndexError --
         # and @retry() re-ran the handler to raise it again.

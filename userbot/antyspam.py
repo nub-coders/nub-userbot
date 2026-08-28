@@ -334,14 +334,14 @@ async def block_user(client, message):
     if message.reply_to_message and message.reply_to_message.from_user:
         user_id = message.reply_to_message.from_user.id
     else:
-        args = message.text.split(maxsplit=1)
+        args = cmd_text(message).split(maxsplit=1)
         if len(args) < 2:
             return await message.edit(styled_error("Reply to a user or provide a user ID/username."))
         try:
             user = await client.get_users(int(args[1]) if args[1].isdigit() else args[1])
             user_id = user.id
         except Exception as e:
-            return await message.edit(styled_error(f"User not found: {e}"))
+            return await message.edit(styled_error("User not found.", details=str(e)))
     await client.block_user(user_id)
     await message.edit(styled_success(f"Blocked `{user_id}`."))
 
@@ -352,14 +352,14 @@ async def unblock_user(client, message):
     if message.reply_to_message and message.reply_to_message.from_user:
         user_id = message.reply_to_message.from_user.id
     else:
-        args = message.text.split(maxsplit=1)
+        args = cmd_text(message).split(maxsplit=1)
         if len(args) < 2:
             return await message.edit(styled_error("Reply to a user or provide a user ID/username."))
         try:
             user = await client.get_users(int(args[1]) if args[1].isdigit() else args[1])
             user_id = user.id
         except Exception as e:
-            return await message.edit(styled_error(f"User not found: {e}"))
+            return await message.edit(styled_error("User not found.", details=str(e)))
     await client.unblock_user(user_id)
     await message.edit(styled_success(f"Unblocked `{user_id}`."))
 

@@ -12,7 +12,7 @@ from utils.message import Msg
 @retry()
 async def schedule_message(client: Client, message: Message):
     # Check if the command has the correct format
-    command_parts = message.text.split(maxsplit=3)
+    command_parts = cmd_text(message).split(maxsplit=3)
     
     if len(command_parts) < 4:
         await message.reply("❌ **Invalid format!**\nUse: `/schedule <username/chatid> <time(HH:MM:SS or HH:MM:SS:CC)> <message>`")

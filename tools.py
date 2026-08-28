@@ -545,14 +545,29 @@ def get_user(message, text) -> [int, str, None]:
     return user_s, reason_
 
 
+def cmd_text(message) -> str:
+    """The text a command was typed in, whether that was a message or a caption.
+
+    kurigram's ``filters.command`` matches on ``message.text or message.caption``,
+    so every command handler also fires for a photo/video whose *caption* is the
+    command. Handlers that then reached for ``message.text.split()`` crashed with
+    "'NoneType' object has no attribute 'split'" -- and because ``retry()``
+    re-raises anything that is not a FloodWait or OSError, the traceback went to
+    the log and the user saw no reply at all.
+
+    Always returns a string, so ``.split()`` on the result is safe.
+    """
+    return message.text or message.caption or ""
+
+
 def get_text(message: Message) -> [None, str]:
     """Extract Text From Commands"""
-    text_to_return = message.text
-    if message.text is None:
+    text_to_return = cmd_text(message)
+    if not text_to_return:
         return None
     if " " in text_to_return:
         try:
-            return message.text.split(None, 1)[1]
+            return text_to_return.split(None, 1)[1]
         except IndexError:
             return None
     else:
@@ -584,8 +599,8 @@ async def extract_userid(message, text: str):
 
 
 async def extract_user_and_reason(message, sender_chat=False):
-    args = message.text.strip().split()
-    text = message.text
+    args = cmd_text(message).strip().split()
+    text = cmd_text(message)
     user = None
     reason = None
     if message.reply_to_message:
@@ -1004,7 +1019,7 @@ def get_arg(message: Message):
 
 def get_args(message: Message):
     try:
-        message = message.text
+        message = cmd_text(message)
     except AttributeError:
         pass
     if not message:
@@ -1022,12 +1037,13 @@ def get_args(message: Message):
 
 def get_args_from_caret(message):
     """Extract arguments from prefixed commands (supports all HARDCODED_PREFIXES)"""
-    if not message.text:
+    body = cmd_text(message)
+    if not body:
         return []
-    first_char = message.text[0]
+    first_char = body[0]
     if first_char not in HARDCODED_PREFIXES:
         return []
-    text = message.text[1:]
+    text = body[1:]
     parts = text.split()
     if len(parts) <= 1:
         return []
@@ -1036,12 +1052,13 @@ def get_args_from_caret(message):
 
 def get_command_from_caret(message):
     """Extract command name from prefixed commands."""
-    if not message.text:
+    body = cmd_text(message)
+    if not body:
         return ""
-    first_char = message.text[0]
+    first_char = body[0]
     if first_char not in HARDCODED_PREFIXES:
         return ""
-    text = message.text[1:]
+    text = body[1:]
     parts = text.split()
     if not parts:
         return ""

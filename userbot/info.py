@@ -11,7 +11,7 @@ info_filter = filters.outgoing & filters.command("info", prefixes=HARDCODED_PREF
 @retry()
 async def info_command_handler(client, message):
     # Check if there is an argument after the command
-    args = message.text.split(maxsplit=1)
+    args = cmd_text(message).split(maxsplit=1)
     if len(args) > 1:
         # An argument is provided, try to fetch user info by chat_id or username
         target = args[1]

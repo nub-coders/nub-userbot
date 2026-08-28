@@ -108,7 +108,7 @@ async def get_globals(client):
 async def setalivetext(client,message):
     user_id = client.me.id
     text = (
-        message.text.split(None, 1)[1]
+        cmd_text(message).split(None, 1)[1]
         if len(
             message.command,
         ) != 1
@@ -129,7 +129,7 @@ async def setalivetext(client,message):
 async def setemoji(client,message):
     user_id = client.me.id
     emoji = (
-        message.text.split(None, 1)[1]
+        cmd_text(message).split(None, 1)[1]
         if len(
             message.command,
         ) != 1

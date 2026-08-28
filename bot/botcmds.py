@@ -387,7 +387,7 @@ async def save_settings(client, callback_query: CallbackQuery):
 # ─────────────────────────── /status ───────────────────────────────────────
 @Client.on_message(filters.command("status") & filters.private & _owner_filter())
 async def status_handler(client, message: Message):
-    command_args = message.text.split()
+    command_args = cmd_text(message).split()
     if message.reply_to_message and message.reply_to_message.from_user:
         user_id = message.reply_to_message.from_user.id
     elif len(command_args) > 1:

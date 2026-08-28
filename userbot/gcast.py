@@ -25,7 +25,7 @@ async def gcast_handler(client, message):
        with open(admin_file, "r") as file:
           admin_ids = [int(line.strip()) for line in file.readlines()]
     try:
-        parts = message.text.split(maxsplit=2)
+        parts = cmd_text(message).split(maxsplit=2)
         flag = parts[1].lower()
         logger.debug(f"gcast flag: {flag}")
         text_or_file = parts[2] if len(parts) > 2 else None  #handles cases with no message

@@ -15,12 +15,12 @@ spam_chats = []
 
 def get_arg(message) -> [None, str]:
     """Extract Text From Commands"""
-    text_to_return = message.text
-    if message.text is None:
+    text_to_return = cmd_text(message)
+    if not text_to_return:
         return None
     if " " in text_to_return:
         try:
-            return message.text.split(None, 1)[1]
+            return text_to_return.split(None, 1)[1]
         except IndexError:
             return None
     else:
@@ -37,7 +37,7 @@ def is_active_user(user):
 async def spam(client, message):
     if message.chat.id==-1001806816712 or is_admin(message.chat.id):
        return await message.edit_text("Who the hell are you trying to spam in my owner's/lord's Chat/Group\n\n**Fuck off!!!**")
-    if len(message.text.split()) <3 :
+    if len(cmd_text(message).split()) <3 :
        return await bot.send_message(client.me.id, f"**USAGE EXAMPLE:** /spam 5 hello`")
     try:
         amount = int(message.command[1])
@@ -106,7 +106,7 @@ async def delaySpam(client, message):
     except ValueError:
         return await message.edit( "Give me a valid delay(int) to spam.")
 
-    to_spam = message.text.split(" ", 3)[3].strip()
+    to_spam = cmd_text(message).split(" ", 3)[3].strip()
     event = asyncio.Event()
     task = asyncio.create_task(
         spam_text(client, message.chat.id, to_spam, count, reply_to, delay, event)
@@ -120,7 +120,7 @@ async def delaySpam(client, message):
 async def fastspam(client, message):
     if message.chat.id==-1001806816712 or is_admin(message.chat.id):
        return await message.edit_text("Who the hell are you trying to spam in my owner's/lord's Chat/Group\n\n**Fuck off!!!**")
-    if len(message.text.split()) <3 :
+    if len(cmd_text(message).split()) <3 :
        return await bot.send_message(client.me.id, f"**USAGE EXAMPLE:** /spam 5 hello`")
     try:
         amount = int(message.command[1])

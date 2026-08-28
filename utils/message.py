@@ -472,7 +472,7 @@ class Msg:
         """Render a structured error message with standard MTProto HTML."""
         parts = [f"<b>{Msg.EMOJI_ERROR} {title}</b>", f"<blockquote>\n{message}\n</blockquote>"]
         if details:
-            parts.append(f"<blockquote expandable>\n<b>Error Details:</b>\n\n<code>{details}</code>\n</blockquote>")
+            parts.append(f"<blockquote expandable>\n<b>Error Details:</b>\n\n<code>{html.escape(str(details), quote=False)}</code>\n</blockquote>")
         if hint:
             parts.append(f"💡 <i>{hint}</i>")
         return "\n\n".join(parts)

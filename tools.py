@@ -14,6 +14,7 @@ import shlex
 import datetime
 import subprocess
 import base64
+import html
 import logging
 from io import BytesIO, StringIO
 from urllib.parse import parse_qs, urlparse
@@ -213,6 +214,25 @@ async def edit_or_reply(message, text, **kwargs):
     return await message.reply(text, **kwargs)
 
 
+def html_esc(text) -> str:
+    """Escape untrusted text before it goes into an HTML parse-mode message.
+
+    kurigram's HTML parser is lenient -- it does not raise on stray or unmatched
+    tags -- so the damage is silent rather than loud, which is worse:
+
+      * Anything that looks like a tag is *deleted*. "<code>KeyError:
+        <users.42></code>" renders as "KeyError: " and the useful half of the
+        exception is gone, with no hint that it was dropped.
+      * Tags in a display name are honoured. A stranger whose first name is
+        '<a href="http://evil">click</a>' gets a real link entity in the
+        message our account sends -- their text, our voice.
+
+    quote=False keeps quotes readable; they are harmless outside attributes,
+    and nothing here interpolates into an attribute.
+    """
+    return html.escape(str(text), quote=False)
+
+
 def styled_error(text, details="", hint=""):
     """Format an error message with standard MTProto HTML typography."""
     parts = [
@@ -220,7 +240,7 @@ def styled_error(text, details="", hint=""):
         f"<blockquote>{text}</blockquote>"
     ]
     if details:
-        parts.append(f"<blockquote expandable><b>Technical Details:</b>\n<code>{details}</code></blockquote>")
+        parts.append(f"<blockquote expandable><b>Technical Details:</b>\n<code>{html_esc(details)}</code></blockquote>")
     if hint:
         parts.append(f"💡 <i>{hint}</i>")
     return "\n\n".join(parts)
@@ -774,9 +794,11 @@ async def delete_if_self(message):
 async def format_welcome_message(client, text, chat_id, user_or_chat_name):
     """Helper function to format welcome message with real data"""
     try:
-        formatted_text = text.replace("{name}", user_or_chat_name)
+        # Escaped: the name comes from whoever messaged us, and the template is
+        # sent with HTML parse mode.
+        formatted_text = text.replace("{name}", html_esc(user_or_chat_name))
         formatted_text = formatted_text.replace("{id}", str(chat_id))
-        formatted_text = formatted_text.replace("{yourname}", f"{client.me.first_name}")
+        formatted_text = formatted_text.replace("{yourname}", html_esc(client.me.first_name))
         return formatted_text
     except Exception as e:
         logging.error(f"Error formatting welcome message: {str(e)}")

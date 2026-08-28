@@ -84,7 +84,12 @@ async def handle_user(client, message):
         session_name = f'user_{client.me.id}'
         user_dir = session_name
         os.makedirs(user_dir, exist_ok=True)
-        full_name = f"{message.from_user.first_name} {message.from_user.last_name or ''}"
+        # Escaped: this is a stranger's chosen display name going into a
+        # message we send with HTML parse mode. Unescaped, a name containing
+        # tags gets them honoured -- somebody called
+        # '<a href="http://evil">click</a>' would have our account send that as
+        # a working link.
+        full_name = html_esc(f"{message.from_user.first_name} {message.from_user.last_name or ''}")
         spam_control = user_data.get('Spam_control', True)
 
     # Render the settings menu with emojis

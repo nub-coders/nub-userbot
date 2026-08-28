@@ -44,15 +44,18 @@ async def info_command_handler(client, message):
 
     chat = message.chat
     chat_id = chat.id
-    chat_title = chat.title if chat.title else "N/A"
+    chat_title = html_esc(chat.title) if chat.title else "N/A"
 
     # User's join date (if in a group)
     member_info = await client.get_chat_member(chat_id, user_id) if str(chat.type).endswith(('GROUP', 'SUPERGROUP')) else None
     join_date = member_info.joined_date if member_info else "Unknown"
 
     # Build the full info message with native HTML table
-    username_display = f"@{username}" if username else "<i>None</i>"
-    full_name = f"{first_name} {last_name}".strip() or "<i>Anonymous</i>"
+    # Escaped: names, usernames and chat titles are chosen by other people, and
+    # this goes out with HTML parse mode. The empty string is falsy, so the
+    # deliberate <i>Anonymous</i> fallback still fires for a nameless account.
+    username_display = f"@{html_esc(username)}" if username else "<i>None</i>"
+    full_name = html_esc(f"{first_name} {last_name}".strip()) or "<i>Anonymous</i>"
 
     info_table = (
         f"<b>👤 User Information</b>\n\n"

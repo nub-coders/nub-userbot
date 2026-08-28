@@ -12,6 +12,17 @@ from utils.message import Msg
 
 logger = logging.getLogger("userbot")
 
+# A FloodWait longer than this means Telegram has decided the account is
+# spamming; sleeping it off used to be the plan, but e.value here reaches
+# thousands of seconds, so the handler sat blocked for the better part of an hour
+# and the status message never changed. Give up and report instead.
+_MAX_FLOOD_WAIT = 60
+
+
+def _is_owner(message: Message) -> bool:
+    """True when the account itself sent this, rather than a sudo user."""
+    return bool(message.from_user and message.from_user.is_self)
+
 
 async def _dm_blast(client, message, *, verb, emoji, needs_text, make_provider, done_msg, sent_emoji):
     """Shared DM flood loop for dmspam.
@@ -19,6 +30,17 @@ async def _dm_blast(client, message, *, verb, emoji, needs_text, make_provider, 
     make_provider(args) -> callable returning the text to send on each iteration.
     """
     try:
+        # Sudo users are trusted to run commands, not to aim the owner's account
+        # at a stranger. This handler sends up to 100 unsolicited DMs from the
+        # owner's own identity, and the resulting report -- and any ban -- lands
+        # on the owner, not on whoever typed the command. Owner only.
+        if not _is_owner(message):
+            await edit_or_reply(message, styled_error(
+                f"DM {verb} is owner-only",
+                hint="It sends unsolicited DMs from the account owner's identity.",
+            ))
+            return
+
         args = get_args_from_caret(message)
 
         # Get target user
@@ -67,13 +89,24 @@ async def _dm_blast(client, message, *, verb, emoji, needs_text, make_provider, 
                 success_count += 1
                 await asyncio.sleep(0.15)  # Delay to avoid flood
             except FloodWait as e:
+                if e.value > _MAX_FLOOD_WAIT:
+                    await status.edit(
+                        f"⏳ <b>Stopped: Telegram asked for a {e.value}s wait.</b>\n"
+                        f"✅ Sent: {success_count}/{count}"
+                    )
+                    return
                 await asyncio.sleep(e.value)
-                await client.send_message(target_user.id, provider())
-                success_count += 1
+                try:
+                    await client.send_message(target_user.id, provider())
+                    success_count += 1
+                except Exception:
+                    # The retry used to be unguarded, so a second failure threw
+                    # away the counts collected so far and reported a raw error.
+                    failed_count += 1
             except Exception as e:
                 failed_count += 1
                 if "blocked" in str(e).lower() or "user_is_blocked" in str(e).lower():
-                    await status.edit(f"❌ **User has blocked the bot!**\n✅ Sent: {success_count}/{count}")
+                    await status.edit(f"❌ <b>User has blocked the bot!</b>\n✅ Sent: {success_count}/{count}")
                     return
 
         result_text = (

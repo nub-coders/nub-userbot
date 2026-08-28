@@ -137,6 +137,57 @@ class SqliteCollection:
             "CREATE TABLE IF NOT EXISTS sessions (user_id TEXT PRIMARY KEY, doc TEXT NOT NULL)"
         )
         self._conn.commit()
+        self._drop_legacy_dotted_keys()
+
+    def _drop_legacy_dotted_keys(self):
+        """Remove top-level keys with a dot in the name, left by the bug ``_resolve`` fixed.
+
+        Before that fix every ``{"$inc": {f"users.{uid}": 1}}`` wrote a literal
+        ``"users.<uid>"`` key at the top of the document instead of incrementing
+        ``users["<uid>"]``. Those keys are unreachable -- no read in the project
+        looks for a dotted name -- so they sat there accumulating one dead entry
+        per person who ever sent a DM, in a document sqlite rewrites whole on
+        every incoming message.
+
+        The values are dropped rather than folded into the nested counters. They
+        count DMs received while the antispam thresholds were inert, so nobody was
+        ever warned about them; merging them in would mean the next message from a
+        long-standing correspondent could cross ``block_count`` and get them
+        blocked with no warning, months after the messages it is counting. A
+        counter that restarts is the same state the account has effectively been
+        in all along.
+
+        Only this backend needs it: Mongo always resolved dotted paths correctly,
+        and MemoryCollection does not survive a restart.
+        """
+        with self._lock:
+            rows = self._conn.execute("SELECT user_id, doc FROM sessions").fetchall()
+            cleaned_docs = 0
+            cleaned_keys = 0
+            for user_id, raw in rows:
+                try:
+                    doc = json.loads(raw)
+                except ValueError:
+                    continue
+                if not isinstance(doc, dict):
+                    continue
+                dotted = [k for k in doc if "." in k]
+                if not dotted:
+                    continue
+                for key in dotted:
+                    del doc[key]
+                cleaned_docs += 1
+                cleaned_keys += len(dotted)
+                self._conn.execute(
+                    "UPDATE sessions SET doc = ? WHERE user_id = ?",
+                    (json.dumps(doc), user_id),
+                )
+            if cleaned_docs:
+                self._conn.commit()
+                logger.info(
+                    "storage: dropped %s unreachable dotted key(s) from %s document(s)",
+                    cleaned_keys, cleaned_docs,
+                )
 
     def _get(self, key):
         row = self._conn.execute(
@@ -308,5 +359,30 @@ if __name__ == "__main__":
     obs.on_write(lambda _: (_ for _ in ()).throw(RuntimeError("boom")))
     obs.update_one({"user_id": 7}, {"$set": {"n": 99}})
     assert obs.find_one({"user_id": 7})["n"] == 99
+
+    # Opening a database written before _resolve existed must drop the literal
+    # "users.<id>" keys that bug left behind, and touch nothing else -- including
+    # a nested counter for the same sender, which is the live one.
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "legacy.db")
+        legacy = SqliteCollection(path)
+        legacy.insert_one({
+            "user_id": 1,
+            "users.4242": 7,          # dead: written before the fix
+            "users.99": 3,            # dead
+            "users": {"4242": 2},     # live: written after it
+            "block_count": 5,
+            "white_listed": [11],
+        })
+        legacy._conn.close()
+
+        reopened = SqliteCollection(path)
+        doc = reopened.find_one({"user_id": 1})
+        assert "users.4242" not in doc and "users.99" not in doc, doc
+        assert doc["users"] == {"4242": 2}, doc
+        assert doc["block_count"] == 5 and doc["white_listed"] == [11], doc
+        # Idempotent, and a clean database is left exactly as it was.
+        reopened._conn.close()
+        assert SqliteCollection(path).find_one({"user_id": 1}) == doc
 
     print("storage self-check OK")

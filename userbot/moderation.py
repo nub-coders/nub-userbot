@@ -72,9 +72,11 @@ async def unban_all_users(client, message):
         chat = await client.get_chat(chat_id)
 
         # Send initial status message
+        # The title is the group's text, not ours: escaped, or a group called
+        # "<Banned>" turns this line into "Starting unban for ...".
         status_msg = await client.send_message(
             chat_id,
-            f"🔄 {f'Starting unban for {chat.title}...'}"
+            f"🔄 Starting unban for {html_esc(chat.title)}..."
         )
 
         unbanned_count = 0
@@ -127,7 +129,7 @@ async def unban_all_users(client, message):
             final_block = (
                 f"<b>✅ Unban All Completed</b>\n\n"
                 f"<blockquote>\n"
-                f"<b>• Chat:</b> {chat.title}\n"
+                f"<b>• Chat:</b> {html_esc(chat.title)}\n"
                 f"<b>• Total Processed:</b> {total_processed}\n"
                 f"<b>• Successfully Unbanned:</b> {unbanned_count}\n"
                 f"<b>• Failed:</b> {failed_count}\n"

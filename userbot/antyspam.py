@@ -265,22 +265,26 @@ async def add_to_blacklist(client, message):
 
     if user_data:
         blocked_list = user_data.get('blocked_list', []) #Changed to blocked_list
+        # Escaped: the chat's own title, in a message the default parse mode
+        # reads as HTML. A group called "<Spam>" used to report as " is already
+        # in the blacklist."
+        chat_label = html_esc(chat.title or chat.first_name)
         if chat_id in blocked_list:
-            await message.edit_text(f"{chat.title or chat.first_name} is already in the blacklist.")
+            await message.edit_text(f"{chat_label} is already in the blacklist.")
             return
 
         user_sessions.update_one(
             {"user_id": client.me.id},
             {"$push": {"blocked_list": chat_id}}  #Changed to blocked_list
         )
-        await message.edit_text(f"{chat.title or chat.first_name} added to blacklist.")
+        await message.edit_text(f"{chat_label} added to blacklist.")
 
     else:
         user_sessions.insert_one({
             "user_id": client.me.id,
             "blocked_list": [chat_id]  #Changed to blocked_list
         })
-        await message.edit_text(f"{chat.title or chat.first_name} added to blacklist (new entry).")
+        await message.edit_text(f"{html_esc(chat.title or chat.first_name)} added to blacklist (new entry).")
 
 @Client.on_message(filters.command("rmbl", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()

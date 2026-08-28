@@ -404,7 +404,10 @@ async def status_handler(client, message: Message):
 
     try:
         tg_user = await client.get_users(user_id)
-        user_name = f"{tg_user.first_name or ''} {tg_user.last_name or ''}".strip() or "Unknown"
+        # Escaped: a display name is the user's own text going into an HTML
+        # message, so unescaped it either vanishes (kurigram deletes anything
+        # tag-shaped without complaining) or is honoured as real formatting.
+        user_name = html_esc(f"{tg_user.first_name or ''} {tg_user.last_name or ''}".strip()) or "Unknown"
         username_str = f"@{tg_user.username}" if tg_user.username else "None"
     except Exception:
         user_name, username_str = "Unknown", "None"
@@ -488,7 +491,7 @@ async def inline_query_handler(client, query: InlineQuery):
             banall_message = (
                 f"<h1>⚠️ Confirm Ban All Users</h1>\n\n"
                 f'<table border="1">\n'
-                f'<tr><th>Target Group</th><td>{chat.title}</td></tr>\n'
+                f'<tr><th>Target Group</th><td>{html_esc(chat.title)}</td></tr>\n'
                 f'<tr><th>Total Members</th><td>{members_count}</td></tr>\n'
                 f'</table>\n\n'
                 f"<blockquote>Please confirm if you want to ban all members in this group.</blockquote>"
@@ -516,7 +519,7 @@ async def inline_query_handler(client, query: InlineQuery):
 
     # Default: a status card
     info = query.from_user
-    name = (info.first_name or "") + (f" {info.last_name}" if info.last_name else "")
+    name = html_esc((info.first_name or "") + (f" {info.last_name}" if info.last_name else ""))
     username = f"@{info.username}" if info.username else "No username"
     connected = clients.get(user_id) is not None
     status_message = (
@@ -575,7 +578,7 @@ async def banall_callback_handler(client, callback_query: CallbackQuery):
                             await callback_query.edit_message_text(
                                 f"<h1>🔨 Banning in Progress</h1>\n\n"
                                 f'<table border="1">\n'
-                                f'<tr><th>Group</th><td>{chat.title}</td></tr>\n'
+                                f'<tr><th>Group</th><td>{html_esc(chat.title)}</td></tr>\n'
                                 f'<tr><th>Banned</th><td>{banned_count} / {total_users}</td></tr>\n'
                                 f'</table>',
                                 parse_mode=ParseMode.HTML,
@@ -588,7 +591,7 @@ async def banall_callback_handler(client, callback_query: CallbackQuery):
         await callback_query.edit_message_text(
             f"<h1>✅ Ban All Completed</h1>\n\n"
             f'<table border="1">\n'
-            f'<tr><th>Group</th><td>{chat.title}</td></tr>\n'
+            f'<tr><th>Group</th><td>{html_esc(chat.title)}</td></tr>\n'
             f'<tr><th>Total Members</th><td>{total_users}</td></tr>\n'
             f'<tr><th>Successfully Banned</th><td>{banned_count}</td></tr>\n'
             f'<tr><th>Success Rate</th><td>{rate:.1f}%</td></tr>\n'
@@ -597,7 +600,7 @@ async def banall_callback_handler(client, callback_query: CallbackQuery):
         )
     except Exception as e:
         await callback_query.edit_message_text(
-            f"<h1>❌ Error</h1><blockquote>{e}</blockquote>",
+            f"<h1>❌ Error</h1><blockquote>{html_esc(e)}</blockquote>",
             parse_mode=ParseMode.HTML,
         )
 

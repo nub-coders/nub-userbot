@@ -616,7 +616,12 @@ async def download_file(
         requests.exceptions.HTTPError: If the server returns an error.
         OSError: If there is an error opening or writing to the file.
     """
-    response = requests.get(url, stream=True)
+    # (connect, read) timeouts. This is a synchronous request inside an async
+    # function, so it blocks the whole event loop while it waits: without a
+    # timeout a host that accepts the connection and then goes quiet freezes
+    # every handler until the process is restarted by hand. The read timeout
+    # applies per chunk, not to the total transfer, so large files are fine.
+    response = requests.get(url, stream=True, timeout=(10, 60))
     response.raise_for_status()
     xx=0
     with open(filename, "wb") as file:
@@ -812,7 +817,9 @@ async def big_file(msg, sender, zip_filename):
     import requests
     edit = 0
     url = "https://api.gofile.io/getServer"
-    response = requests.get(url)
+    # Blocks the event loop; bound it so an unresponsive gofile can't hang the
+    # whole userbot (see the note in download_file).
+    response = requests.get(url, timeout=30)
     data = response.json()
     server = data["data"]["server"]
 
@@ -961,6 +968,19 @@ async def run_cmd(cmd: str) -> Tuple[str, str, int, int]:
     )
 
 
+def scratch_name(suffix: str) -> str:
+    """A unique working-file name for media conversions.
+
+    These helpers used to write to fixed names like "sticker.png". Two people
+    running a sticker command at the same time then shared one file on disk,
+    and whichever conversion finished second decided what *both* of them got
+    sent -- so one user could receive the other's media. Stay in the current
+    directory, as before, so relative paths and caller cleanup are unaffected;
+    only the name changes.
+    """
+    return f"nub_scratch_{os.getpid()}_{time.time_ns()}{suffix}"
+
+
 async def convert_to_image(message, client) -> [None, str]:
     """Convert Most Media Formats To Raw Image"""
     if not message:
@@ -981,24 +1001,30 @@ async def convert_to_image(message, client) -> [None, str]:
         final_path = await message.reply_to_message.download()
     elif message.reply_to_message.sticker:
         if message.reply_to_message.sticker.mime_type == "image/webp":
-            final_path = "webp_to_png_s_proton.png"
+            final_path = scratch_name(".png")
             path_s = await message.reply_to_message.download()
             im = Image.open(path_s)
             im.save(final_path, "PNG")
         else:
             path_s = await client.download_media(message.reply_to_message)
-            final_path = "lottie_proton.png"
+            final_path = scratch_name(".png")
+            # Quote the paths: run_cmd shlex.splits the string, so a downloaded
+            # name containing a space would otherwise arrive as two argv items.
             cmd = (
-                f"lottie_convert.py --frame 0 -if lottie -of png {path_s} {final_path}"
+                "lottie_convert.py --frame 0 -if lottie -of png "
+                f"{shlex.quote(path_s)} {shlex.quote(final_path)}"
             )
             await run_cmd(cmd)
     elif message.reply_to_message.audio:
         thumb = message.reply_to_message.audio.thumbs[0].file_id
         final_path = await client.download_media(thumb)
     elif message.reply_to_message.video or message.reply_to_message.animation:
-        final_path = "fetched_thumb.png"
+        final_path = scratch_name(".png")
         vid_path = await client.download_media(message.reply_to_message)
-        await run_cmd(f"ffmpeg -i {vid_path} -filter:v scale=500:500 -an {final_path}")
+        await run_cmd(
+            f"ffmpeg -i {shlex.quote(vid_path)} -filter:v scale=500:500 -an "
+            f"{shlex.quote(final_path)}"
+        )
     return final_path
 
 
@@ -1022,7 +1048,7 @@ def resize_image(image):
         im = im.resize(sizenew)
     else:
         im.thumbnail(maxsize)
-    file_name = "Sticker.png"
+    file_name = scratch_name(".png")
     im.save(file_name, "PNG")
     if os.path.exists(image):
         os.remove(image)
@@ -1113,7 +1139,7 @@ async def resize_media(media: str, video: bool, fast_forward: bool) -> str:
             cmd_f = f"-filter:v scale={width}:{height}"
         fps_ = float(info_["frame_rate"])
         fps_cmd = "-r 30 " if fps_ > 30 else ""
-        cmd = f"ffmpeg -i {media} {cmd_f} -ss 00:00:00 -to 00:00:03 -an -c:v libvpx-vp9 {fps_cmd}-fs 256K {resized_video}"
+        cmd = f"ffmpeg -i {shlex.quote(media)} {cmd_f} -ss 00:00:00 -to 00:00:03 -an -c:v libvpx-vp9 {fps_cmd}-fs 256K {shlex.quote(resized_video)}"
         _, error, __, ___ = await run_cmd(cmd)
         os.remove(media)
         return resized_video
@@ -1124,7 +1150,7 @@ async def resize_media(media: str, video: bool, fast_forward: bool) -> str:
     new_size = (int(image.width * scale), int(image.height * scale))
 
     image = image.resize(new_size, Image.LANCZOS)
-    resized_photo = "sticker.png"
+    resized_photo = scratch_name(".png")
     image.save(resized_photo)
     os.remove(media)
     return resized_photo

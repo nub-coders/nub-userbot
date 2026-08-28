@@ -7,6 +7,7 @@ import os
 import io
 import logging
 import re
+import shlex
 import shutil
 import subprocess
 import textwrap
@@ -98,22 +99,41 @@ async def tinying(client ,message):
     ik = await client.download_media(reply)
     im1 = Image.open("blank.png")
     if ik.endswith(".tgs"):
-        await client.download_media(reply, "man.tgs")
-        await bash("lottie_convert.py man.tgs json.json")
-        with open("json.json", "r") as f:
+        # Unique names: two .tiny runs at once used to fight over man.tgs and
+        # json.json, and the loser got the other run's sticker back. The old
+        # code also downloaded the sticker a second time as "man.tgs" and then
+        # read it from the working directory -- but download_media puts a bare
+        # relative name under downloads/, so that path never existed. Reuse the
+        # copy we already have in `ik` instead.
+        json_path = scratch_name(".json")
+        out_path = scratch_name(".tgs")
+        # run_cmd, not bash: bash() is not defined anywhere in this project, so
+        # this branch raised NameError for every animated sticker.
+        await run_cmd(
+            f"lottie_convert.py {shlex.quote(ik)} {shlex.quote(json_path)}"
+        )
+        if not os.path.exists(json_path):
+            os.remove(ik)
+            return await NUB.edit_text("**Failed to convert that animated sticker!**")
+        with open(json_path, "r") as f:
             jsn = f.read()
         jsn = jsn.replace("512", "2000")
-        with open("json.json", "w") as f:
+        with open(json_path, "w") as f:
             f.write(jsn)
-        await bash("lottie_convert.py json.json man.tgs")
-        file = "man.tgs"
-        os.remove("json.json")
+        await run_cmd(
+            f"lottie_convert.py {shlex.quote(json_path)} {shlex.quote(out_path)}"
+        )
+        file = out_path
+        os.remove(json_path)
     else:
         if ik.endswith((".gif", ".mp4")):
             iik = cv2.VideoCapture(ik)
-            busy = iik.read()
-            cv2.imwrite("i.png", busy)
-            src = "i.png"
+            ok, frame = iik.read()
+            iik.release()
+            if not ok:
+                return await NUB.edit_text("**Could not read that video!**")
+            src = scratch_name(".png")
+            cv2.imwrite(src, frame)
         else:
             src = ik
         im = Image.open(src)
@@ -129,15 +149,16 @@ async def tinying(client ,message):
             xxx = 200 + 5 * aa
             yyy = 200 + 5 * bb
         k = im.resize((int(xxx), int(yyy)))
-        k.save("k.png", format="PNG", optimize=True)
-        im2 = Image.open("k.png")
+        resized = scratch_name(".png")
+        k.save(resized, format="PNG", optimize=True)
+        im2 = Image.open(resized)
         back_im = im1.copy()
         back_im.paste(im2, (150, 0))
-        back_im.save("o.webp", "WEBP", quality=95)
-        file = "o.webp"
+        file = scratch_name(".webp")
+        back_im.save(file, "WEBP", quality=95)
         if src != ik:
             os.remove(src)
-        os.remove("k.png")
+        os.remove(resized)
     await asyncio.gather(
         NUB.delete(),
         client.send_sticker(

@@ -5,6 +5,8 @@ from pyrogram import __version__ as versipyro
 from config import *
 from tools import *
 
+logger = logging.getLogger("userbot.status")
+
 @Client.on_message(filters.command(["alive", "awake"], prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def alive(client, message):
@@ -31,14 +33,20 @@ async def alive(client, message):
         f"<b><a href='tg://user?id={client.me.id}'>OWNER</a></b>"
     )
     try:
-        await xx.delete()
+        # Send the card first and only then drop the placeholder. Deleting it up
+        # front meant that when the send failed -- no media rights in the group,
+        # or a logo path that no longer exists -- the fallback tried to edit a
+        # message that was already gone, raising MessageIdInvalid, so `.alive`
+        # produced nothing at all.
         await send(
             message.chat.id,
             alive_logo,
             caption=man,
             parse_mode=enums.ParseMode.HTML,
         )
-    except BaseException:
+        await xx.delete()
+    except Exception as e:
+        logger.warning(f"alive: sending the card as media failed: {e}")
         await xx.edit(man, parse_mode=enums.ParseMode.HTML, disable_web_page_preview=True)
 
 

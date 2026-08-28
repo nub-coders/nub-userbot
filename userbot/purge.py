@@ -12,6 +12,15 @@ logger = logging.getLogger("purge")
 @Client.on_message(filters.command("purge", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
 async def purge(client, message):
+    # Without a reply there is nothing to purge *up to*, and the old code went
+    # straight to `message.reply_to_message.id`, so a bare `.purge` raised
+    # AttributeError inside retry() -- logged, with no reply to the user.
+    if not message.reply_to_message:
+        return await edit_or_reply(
+            message,
+            "Reply to the oldest message you want deleted, then send `.purge`.",
+        )
+
     chunk = []
     async for msg in client.get_chat_history(
         chat_id=message.chat.id,
@@ -52,13 +61,18 @@ async def delete_all_messages(client: Client, message: Message):
                     message_ids = []
                     await asyncio.sleep(0.5)
                 except FloodWait as e:
+                    # Retry the same batch after the wait. Previously the ids
+                    # were left in the list, so the next flush carried more
+                    # than the 100 Telegram accepts and was rejected outright.
                     await asyncio.sleep(e.value)
+                    await client.delete_messages(message.chat.id, message_ids)
+                    message_ids = []
         
         if message_ids:
             await client.delete_messages(message.chat.id, message_ids)
             
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"delall: bulk delete failed: {e}")
 
 @Client.on_message(filters.command("del", prefixes=HARDCODED_PREFIXES) & filters.me & filters.reply)
 @retry()
@@ -69,5 +83,5 @@ async def delete_message(client: Client, message: Message):
                 message.chat.id, 
                 [message.reply_to_message.id, message.id]
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"del: delete failed: {e}")

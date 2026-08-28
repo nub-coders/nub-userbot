@@ -333,20 +333,31 @@ async def play_game_loop(client: Client, chat_id: int):
                 for ch, mc in max_lc.items():
                     prev = game['max_letter_count'].get(ch)
                     game['max_letter_count'][ch] = mc if prev is None else min(prev, mc)
-                
-                game['guesses_made'] += 1
-                game['attempts_left'] -= 1
-            
+
             logger.info(f"[LOOP] Guesses made: {game['guesses_made']}/30")
             logger.info(f"[LOOP] Used words: {game['used_words']}")
-        
+
+        # One attempt per exchange with the bot, counted here rather than inside
+        # the loop over parsed words. It used to sit after two `continue`s, so a
+        # reply whose words were all already processed -- or the duplicate-word
+        # reply above, which skips that block entirely -- cost nothing. The while
+        # condition then never advanced, and since the solver is deterministic it
+        # picked the same word again, sending it every AUTO_DELAY seconds for as
+        # long as the bot kept answering: a self-inflicted flood on the owner's
+        # account. Counting per exchange bounds the loop whatever the bot says.
+        game['guesses_made'] += 1
+        game['attempts_left'] -= 1
+
         # Get next guess
         await asyncio.sleep(AUTO_DELAY)
-        
+
         solver = get_solver()
         # Prefer the detected game length, then the live supported default
         target_length = game.get('word_length') or get_supported_lengths()[0]
-        candidates = solver.filter_candidates(
+        # In a thread: together these walk the whole word list for the length and
+        # take about 0.3s, which is 0.3s of every other handler not running.
+        candidates = await asyncio.to_thread(
+            solver.filter_candidates,
             game['known_letters'],
             game['excluded_letters'],
             game['position_hints'],
@@ -354,17 +365,25 @@ async def play_game_loop(client: Client, chat_id: int):
             min_letter_count=game.get('min_letter_count', {}),
             max_letter_count=game.get('max_letter_count', {}),
         )
-        
+
         # Filter out already used words
         # Normalize used words to lowercase for comparison
         used_lower = {u.lower() for u in game.get('used_words', [])}
         available_candidates = [w for w in candidates if w not in used_lower]
-        
+
         if available_candidates:
-            next_guess = solver.get_best_guess(available_candidates, game['position_hints'],
-                                                word_length=target_length)
+            next_guess = await asyncio.to_thread(
+                solver.get_best_guess, available_candidates, game['position_hints'],
+                word_length=target_length,
+            )
             # Ensure first letter is uppercase when sending
             send_word = next_guess.capitalize()
+            if send_word == game.get('last_sent_word'):
+                # The same guess again means the last exchange taught us nothing,
+                # and repeating it cannot teach us anything either.
+                logger.warning(f"[LOOP] Solver repeated '{send_word}'; stopping")
+                ACTIVE_GAMES.pop(chat_id, None)
+                break
             game['last_sent_word'] = send_word
 
             logger.debug(f"[LOOP] Next guess: {next_guess} ({len(available_candidates)} candidates)")

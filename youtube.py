@@ -1,4 +1,5 @@
 import requests
+import asyncio
 import sys
 import logging
 import os
@@ -8,19 +9,43 @@ import yt_dlp
 
 logger = logging.getLogger(__name__)
 
-# API Configuration
-API_TOKEN = getattr(sys.modules.get('config'), 'YTUBE_API_KEY', os.getenv('YTUBE_API_KEY', ''))
-BASE_URL = getattr(sys.modules.get('config'), 'YTUBE_BASE_URL', os.getenv('YTUBE_BASE_URL', 'https://api.nubcoders.com'))
+
+def _api_config() -> Tuple[str, str]:
+    """The external API's token and base URL, read at call time.
+
+    Not module-level constants: config.py is what calls load_dotenv(), so the
+    values depend on whether it has been imported yet. youtube.py is pulled in by
+    userbot/music.py, and if that ever happens before config -- a different entry
+    point, a direct import, a REPL -- os.getenv comes back empty and the API
+    fallback is silently disabled for the life of the process.
+
+    Note that the default base URL is a third-party service (api.nubcoders.com)
+    which receives the search query verbatim. Point YTUBE_BASE_URL somewhere else
+    or leave YTUBE_API_KEY unset to skip this step entirely; without a token the
+    API is never contacted.
+    """
+    cfg = sys.modules.get('config')
+    token = getattr(cfg, 'YTUBE_API_KEY', None) or os.getenv('YTUBE_API_KEY', '')
+    base = (
+        getattr(cfg, 'YTUBE_BASE_URL', None)
+        or os.getenv('YTUBE_BASE_URL', 'https://api.nubcoders.com')
+    )
+    return token, base
+
 
 def get_video_info(url_or_query: str, max_results: int = 1) -> Tuple[str, str, int, str, str, int, str, str, str]:
-    """Get video info - returns (title, video_id, duration, youtube_link, channel_name, views, stream_url, thumbnail, time_taken)"""
+    """Get video info - returns (title, video_id, duration, youtube_link, channel_name, views, stream_url, thumbnail, time_taken)
+
+    Blocking. Call it through asyncio.to_thread from async code.
+    """
+    api_token, base_url = _api_config()
     logger.info(f"Getting video info for: {url_or_query[:50]}{'...' if len(url_or_query) > 50 else ''}")
     try:
-        logger.debug(f"Making API request to {BASE_URL}/info with max_results={max_results}")
+        logger.debug(f"Making API request to {base_url}/info with max_results={max_results}")
         response = requests.get(
-            f'{BASE_URL}/info',
+            f'{base_url}/info',
             params={'q': url_or_query, 'max_results': max_results},
-            headers={'Authorization': f'Bearer {API_TOKEN}'},
+            headers={'Authorization': f'Bearer {api_token}'},
             timeout=30
         )
         response.raise_for_status()
@@ -53,6 +78,9 @@ def format_duration(seconds):
         logger.debug(f"format_duration received invalid input: {seconds} (type: {type(seconds)})")
         return "N/A"
 
+    # int() first: the `:02d` formats below raise ValueError on a float, and a
+    # duration arriving as 61.0 out of a JSON payload is entirely normal.
+    seconds = int(seconds)
     hours = seconds // 3600
     minutes = (seconds % 3600) // 60
     secs = seconds % 60
@@ -179,6 +207,8 @@ def resolve_innertube(argument: str) -> tuple[str, str, str, str, str, str, str,
     """
     Resolve YouTube metadata and muxed stream URL via direct Innertube player/search API.
     Returns: (title, duration_formatted, youtube_link, thumbnail, channel_name, views, video_id, stream_url)
+
+    Blocking: several `requests` round trips. Call it through asyncio.to_thread.
     """
     try:
         vid = extract_video_id(argument)
@@ -239,6 +269,25 @@ def resolve_innertube(argument: str) -> tuple[str, str, str, str, str, str, str,
         return None
 
 
+def _ytdlp_info(argument):
+    """Blocking yt-dlp lookup. Runs in a worker thread; see handle_youtube_ytdlp."""
+    is_url = re.match(r"^(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+", argument)
+    ydl_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'extract_flat': True, # Get basic info without downloading
+        'skip_download': True,
+        # No cookiesfrombrowser: this runs on a headless server with no browser
+        # profile, and yt-dlp *raises* when it cannot find the one it was told to
+        # read. That turned the last-resort fallback into a guaranteed failure
+        # exactly when the two paths before it had already given up.
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        if is_url:
+            return ydl.extract_info(argument, download=False)
+        return ydl.extract_info(f"ytsearch:{argument}", download=False)['entries'][0]
+
+
 async def handle_youtube_ytdlp(argument):
     """
     Helper function to get YouTube video info using yt-dlp.
@@ -247,46 +296,36 @@ async def handle_youtube_ytdlp(argument):
         tuple: (title, duration, youtube_link, thumbnail, channel_name, views, video_id)
     """
     try:
-        is_url = re.match(r"^(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+", argument)
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'extract_flat': True, # Get basic info without downloading
-            'skip_download': True,
-            "cookiesfrombrowser": ("firefox",), # Optional: Use cookies from browser
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            if is_url:
-                info_dict = ydl.extract_info(argument, download=False)
-            else:
-                info_dict = ydl.extract_info(f"ytsearch:{argument}", download=False)['entries'][0]
+        # to_thread: extract_info does network I/O and can sit there for tens of
+        # seconds. Called inline it froze the whole userbot -- no other handler,
+        # no keepalive, nothing -- until YouTube answered.
+        info_dict = await asyncio.to_thread(_ytdlp_info, argument)
+        if not info_dict:
+            return None
 
-            if not info_dict:
-                return None
+        title = info_dict.get('title', 'N/A')
+        video_id = info_dict.get('id', 'N/A')
+        channel_name = info_dict.get('uploader', 'N/A')
+        views = info_dict.get('view_count', 'N/A')
+        youtube_link = f"https://www.youtube.com/watch?v={video_id}"
 
-            title = info_dict.get('title', 'N/A')
-            video_id = info_dict.get('id', 'N/A')
-            channel_name = info_dict.get('uploader', 'N/A')
-            views = info_dict.get('view_count', 'N/A')
-            youtube_link = f"https://www.youtube.com/watch?v={video_id}"
+        # Duration can be in seconds or a string, convert to seconds if needed
+        duration_raw = info_dict.get('duration', 0)
+        if isinstance(duration_raw, str):
+            try:
+                duration_sec = time_to_seconds(duration_raw)
+            except Exception:
+                duration_sec = 0
+        else:
+            duration_sec = int(duration_raw) if duration_raw else 0
 
-            # Duration can be in seconds or a string, convert to seconds if needed
-            duration_raw = info_dict.get('duration', 0)
-            if isinstance(duration_raw, str):
-                try:
-                    duration_sec = time_to_seconds(duration_raw)
-                except Exception:
-                    duration_sec = 0
-            else:
-                duration_sec = int(duration_raw) if duration_raw else 0
-            
-            duration_formatted = format_duration(duration_sec)
+        duration_formatted = format_duration(duration_sec)
 
-            thumbnail_url = 'N/A'
-            if 'thumbnails' in info_dict and info_dict['thumbnails']:
-                thumbnail_url = info_dict['thumbnails'][-1]['url']
+        thumbnail_url = 'N/A'
+        if 'thumbnails' in info_dict and info_dict['thumbnails']:
+            thumbnail_url = info_dict['thumbnails'][-1]['url']
 
-            return (title, duration_formatted, youtube_link, thumbnail_url, channel_name, views, video_id)
+        return (title, duration_formatted, youtube_link, thumbnail_url, channel_name, views, video_id)
 
     except Exception as e:
         logger.error(f"Error in handle_youtube_ytdlp: {e}")
@@ -303,7 +342,11 @@ async def handle_youtube(argument):
     # 1. Primary: Innertube direct Muxed stream resolution
     try:
         logger.info(f"Attempting Innertube direct resolution for '{argument}'...")
-        innertube_result = resolve_innertube(argument)
+        # to_thread: resolve_innertube makes up to three blocking `requests`
+        # round trips with 15s timeouts each. Awaiting nothing and calling it
+        # inline blocked the event loop for the whole search -- every other
+        # handler, and the connection itself, stalled behind one .play.
+        innertube_result = await asyncio.to_thread(resolve_innertube, argument)
         if innertube_result and innertube_result[7]:
             logger.info(f"Innertube resolution successful for '{argument}'")
             return innertube_result
@@ -312,10 +355,11 @@ async def handle_youtube(argument):
         logger.error(f"Innertube resolution exception: {e}, trying API fallback...")
 
     # 2. Secondary: External API if token is available
-    if API_TOKEN:
+    if _api_config()[0]:
         try:
             logger.info("Attempting API request for video info...")
-            api_result = get_video_info(argument)
+            # Blocking too: a 30s timeout on the event loop.
+            api_result = await asyncio.to_thread(get_video_info, argument)
 
             if api_result and api_result[0] and api_result[0] != "N/A":
                 title, video_id, duration, youtube_link, channel_name, views, stream_url, thumbnail, time_taken = api_result

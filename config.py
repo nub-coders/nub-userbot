@@ -80,7 +80,7 @@ YTUBE_BASE_URL = os.getenv('YTUBE_BASE_URL', 'https://api.nubcoders.com')
 MONGO_URI = os.getenv('MONGO_URI', '')
 DB_NAME = os.getenv('DB_NAME', 'userbot')
 
-from storage import MemoryCollection, SqliteCollection
+from storage import MemoryCollection, SqliteCollection, WriteObservedCollection
 
 # Backend selection: STORAGE_BACKEND=mongo|sqlite|memory. When unset, keep the
 # original behavior — mongo if MONGO_URI is set, else memory.
@@ -112,7 +112,10 @@ def _init_storage():
     return None, MemoryCollection()
 
 
-mongo_client, user_sessions = _init_storage()
+mongo_client, _session_collection = _init_storage()
+# Wrapped so that caches over this collection hear about every write, whichever
+# backend won above. See storage.WriteObservedCollection.
+user_sessions = WriteObservedCollection(_session_collection)
 db = mongo_client[DB_NAME] if mongo_client else None
 
 # Command prefixes recognized by the userbot

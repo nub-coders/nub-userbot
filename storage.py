@@ -6,13 +6,17 @@ the shape the code uses (``find_one``/``insert_one``/``update_one``/``find``
 with ``$set``/``$unset``/``$push``/``$pull``/``$addToSet``/``$inc``), so the
 "interface" here is just that duck type — no ABC, no Mongo wrapper. This module
 provides the two pure-Python backends: in-memory (lost on restart) and SQLite
-(persistent, stdlib only, no external DB).
+(persistent, stdlib only, no external DB), plus a thin proxy that reports writes
+so caches elsewhere can drop what they are holding.
 """
 import copy
 import json
+import logging
 import os
 import sqlite3
 import threading
+
+logger = logging.getLogger(__name__)
 
 
 class _Result:
@@ -180,6 +184,75 @@ class SqliteCollection:
         return [d for d in docs if all(d.get(k) == v for k, v in filt.items())]
 
 
+class WriteObservedCollection:
+    """Collection proxy that reports every write to registered observers.
+
+    ``tools.py`` caches ``find_one`` results for half a minute, and invalidating
+    that cache was left to each caller. Of the twenty-odd places that write to
+    ``user_sessions``, exactly two remembered, so toggling a setting from the
+    bot's settings menu could appear to do nothing for up to 30 seconds.
+    Auditing every call site only fixes the ones that exist today; reporting
+    from the single point all writes pass through fixes the ones added later
+    too.
+
+    Reads are forwarded untouched, so nothing here caches on its own.
+    """
+
+    # Everything pymongo offers that mutates. The pure-Python backends above
+    # implement only a few of these; the rest are listed so that switching to
+    # real Mongo, where they all exist, does not quietly reintroduce the bug.
+    _WRITE_METHODS = frozenset({
+        "insert_one", "insert_many",
+        "update_one", "update_many", "replace_one",
+        "delete_one", "delete_many",
+        "find_one_and_update", "find_one_and_replace", "find_one_and_delete",
+        "bulk_write",
+    })
+
+    def __init__(self, collection):
+        self._collection = collection
+        self._observers = []
+
+    def on_write(self, callback):
+        """Register ``callback(user_id)``, run after each write.
+
+        ``user_id`` is ``None`` when the write's target could not be read off
+        the call -- a bulk write, or a filter that does not name one -- which
+        observers should treat as "assume everything changed".
+        """
+        self._observers.append(callback)
+
+    def _notify(self, target):
+        user_id = target.get("user_id") if isinstance(target, dict) else None
+        if not isinstance(user_id, (int, str)):
+            # Includes the {"user_id": {"$in": [...]}} shape: more than one
+            # document, so no single id to hand over.
+            user_id = None
+        for callback in self._observers:
+            try:
+                callback(user_id)
+            except Exception:
+                # The write already succeeded. A broken observer must not turn
+                # that into an exception the caller sees as a failed write.
+                logger.exception("user_sessions write observer failed")
+
+    def __getattr__(self, name):
+        attr = getattr(self._collection, name)
+        if name not in self._WRITE_METHODS:
+            return attr
+
+        def observed(*args, **kwargs):
+            result = attr(*args, **kwargs)
+            # First positional is the filter for updates/deletes and the
+            # document for inserts; both carry user_id when they name one.
+            target = args[0] if args else kwargs.get("filter") or kwargs.get("document")
+            self._notify(target)
+            return result
+
+        observed.__name__ = name
+        return observed
+
+
 if __name__ == "__main__":
     # Self-check: both backends must behave identically for the operators the
     # bot actually uses.
@@ -209,4 +282,31 @@ if __name__ == "__main__":
         assert mem.find_one({"user_id": 1})["n"] == 5
         assert mem.find_one({"user_id": 99}) is None
         assert len(mem.find()) == 2
+
+    # The write proxy must forward reads and writes unchanged, and report the
+    # affected user_id -- or None when the write does not name exactly one.
+    seen = []
+    obs = WriteObservedCollection(MemoryCollection())
+    obs.on_write(seen.append)
+    obs.insert_one({"user_id": 7, "n": 1})
+    obs.update_one({"user_id": 7}, {"$inc": {"n": 1}})
+    obs.update_one({"nothing": "here"}, {"$set": {"n": 0}})
+    assert seen == [7, 7, None], seen
+    assert obs.find_one({"user_id": 7})["n"] == 2, obs.find_one({"user_id": 7})
+    assert len(obs.find()) == 1
+
+    # Targets that name no single document report None. The backends above only
+    # accept a scalar user_id, so check the extraction itself rather than
+    # sending a filter they cannot answer.
+    seen.clear()
+    obs._notify({"user_id": {"$in": [7, 8]}})
+    obs._notify([{"user_id": 7}, {"user_id": 8}])
+    obs._notify(None)
+    assert seen == [None, None, None], seen
+
+    # A broken observer must not turn a successful write into an exception.
+    obs.on_write(lambda _: (_ for _ in ()).throw(RuntimeError("boom")))
+    obs.update_one({"user_id": 7}, {"$set": {"n": 99}})
+    assert obs.find_one({"user_id": 7})["n"] == 99
+
     print("storage self-check OK")

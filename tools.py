@@ -107,6 +107,7 @@ def _install_download_guard():
 _install_download_guard()
 
 # Simple TTL cache for user session data
+import copy
 import threading
 
 class _SessionCache:
@@ -120,21 +121,30 @@ class _SessionCache:
         with self._lock:
             entry = self._cache.get(user_id)
             if entry and (time.time() - entry[1]) < self._ttl:
-                return entry[0]
+                # A copy: this used to hand back the cached document itself, so
+                # a caller that mutated what it got (or held on to a nested
+                # list) silently rewrote what every later reader saw.
+                return copy.deepcopy(entry[0])
             return None
 
     def set(self, user_id, data):
         with self._lock:
-            self._cache[user_id] = (data, time.time())
+            self._cache[user_id] = (copy.deepcopy(data), time.time())
 
     def invalidate(self, user_id=None):
         with self._lock:
-            if user_id:
+            if user_id is not None:
                 self._cache.pop(user_id, None)
             else:
                 self._cache.clear()
 
 _session_cache = _SessionCache(ttl=30)
+
+# Drop cached documents as soon as anything writes to the collection, instead of
+# trusting each of the twenty-odd write sites to remember (only two did).
+# user_id is None for writes that don't name a single document, which clears the
+# lot -- correct, if blunt.
+user_sessions.on_write(_session_cache.invalidate)
 
 
 def _get_bot_client():

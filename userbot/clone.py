@@ -35,6 +35,7 @@ async def clone(client, message):
     my_full_user = my_det.full_user
     myc_bio = my_full_user.about
     pfp = False
+    poto = None
     try:
        pic = user_.photo.big_file_id
        poto = await client.download_media(pic)
@@ -43,16 +44,33 @@ async def clone(client, message):
        pfp = True
     except Exception as e:
        logger.warning(f"clone: setting profile photo failed: {e}")
+    finally:
+       # The download landed in the working directory; without this every
+       # .clone left another photo_*.jpg behind forever.
+       if poto and os.path.exists(poto):
+           try:
+               os.remove(poto)
+           except OSError as e:
+               logger.warning(f"clone: could not remove {poto}: {e}")
     await client.update_profile(
         first_name=f_name, last_name= l_name,
         bio=c_bio,
     )
-    await message.edit(f"**From now I'm** __{f_name}__\n🤫🤫")
-    user_sessions.update_one(
-                                {"user_id": client.me.id},
-                                {"$set": {'first_name':client.me.first_name, 'last_name': client.me.last_name , 'bio': myc_bio, 'pfp':pfp}},
-                                upsert=True
-                            )
+    # Escaped: f_name is a stranger's display name and this goes out under a
+    # parse mode that also processes HTML.
+    await message.edit(f"**From now I'm** __{html_esc(f_name)}__\n🤫🤫")
+    # Only back up the real identity once. Cloning twice in a row used to
+    # overwrite the backup with clone #1's name, so .revert restored the wrong
+    # person -- and the original name was gone for good.
+    existing = user_sessions.find_one({"user_id": client.me.id}) or {}
+    if existing.get("first_name"):
+        logger.info("clone: identity backup already present, keeping the original")
+    else:
+        user_sessions.update_one(
+                                    {"user_id": client.me.id},
+                                    {"$set": {'first_name':client.me.first_name, 'last_name': client.me.last_name , 'bio': myc_bio, 'pfp':pfp}},
+                                    upsert=True
+                                )
 
 @Client.on_message(filters.command("revert", prefixes=HARDCODED_PREFIXES) & filters.me)
 @retry()
@@ -78,7 +96,7 @@ async def revert(client, message):
     await message.edit("`The leader is back!`")
     user_sessions.update_one(
                                 {"user_id": client.me.id},
-                                {"$set": {'first_name':None, 'last_name': None , 'bio':None}},
+                                {"$set": {'first_name':None, 'last_name': None , 'bio':None, 'pfp':False}},
                                 upsert=True
 
 

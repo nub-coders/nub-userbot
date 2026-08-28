@@ -96,19 +96,22 @@ async def schedule_message(client: Client, message: Message):
         
         # Send confirmation with standard MTProto HTML blockquote
         content_preview = (msg_content[:35] + '…') if len(msg_content) > 35 else msg_content
+        # Escaped: target is whatever the sender typed and content_preview is
+        # the message body, both going into HTML. A body containing tags used to
+        # be silently mangled in the confirmation.
         schedule_html = (
             f"<b>{Msg.EMOJI_CALENDAR} Message Scheduled</b>\n\n"
             f"<blockquote>\n"
-            f"<b>• Target:</b> <code>{target}</code>\n"
+            f"<b>• Target:</b> <code>{html_esc(target)}</code>\n"
             f"<b>• Scheduled Time:</b> <code>{mess.date}</code>\n"
             f"<b>• Timezone:</b> {system_timezone_name}\n"
-            f"<b>• Content:</b> {content_preview}\n"
+            f"<b>• Content:</b> {html_esc(content_preview)}\n"
             f"</blockquote>"
         )
         await message.reply(schedule_html, parse_mode=enums.ParseMode.HTML)
 
 
     except Exception as e:
-        await message.reply(styled_error(f"Failed to schedule message: {e}"))
+        await message.reply(styled_error("Failed to schedule message", details=str(e)))
 
 

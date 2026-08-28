@@ -28,7 +28,10 @@ async def update_handler(client, message):
     before = _requirements_hash()
     out, err, code, _ = await run_cmd("git pull --ff-only")
     if code != 0:
-        await status.edit_text(styled_error(f"git pull failed:\n{err or out}"))
+        # Escaped: git prints branch and file names, and the lenient HTML
+        # parser silently deletes anything tag-shaped -- which is exactly the
+        # part of the failure you need to read.
+        await status.edit_text(styled_error("git pull failed", details=(err or out)[-1000:]))
         return
 
     if "Already up to date" in out:
@@ -43,7 +46,7 @@ async def update_handler(client, message):
             f"{sys.executable} -m pip install -r {REQUIREMENTS}"
         )
         if pip_code != 0:
-            await status.edit_text(styled_error(f"pip install failed:\n{pip_err[-500:]}"))
+            await status.edit_text(styled_error("pip install failed", details=pip_err[-1000:]))
             return
 
     await status.edit_text("♻️ **Update applied. Restarting...**")

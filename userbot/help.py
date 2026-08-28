@@ -66,11 +66,13 @@ async def help_handler(client, message):
         await edit_or_reply(
             message,
             f"Unknown Command\n\n"
-            f"┃ {f'No help found for: {cmd_name}'}\n"
+            f"┃ {f'No help found for: {html_esc(cmd_name)}'}\n"
             f"┃ 💡 {f'Use {prefix}help to see all categories'}\n"
             f"╰━━━━━━━━━━━━━━━━━━━━╯"
         )
 
     except Exception as e:
         logger.error(f"[HELP] Error: {e}")
-        await edit_or_reply(message, styled_error(f"Help error: {str(e)[:50]}"))
+        # details= is the only styled_error argument that escapes, and .help is
+        # reachable by sudo users, whose argument can end up in the exception.
+        await edit_or_reply(message, styled_error("Help lookup failed", details=str(e)[:200]))

@@ -35,7 +35,10 @@ def _target_detail(user_id, user):
     """Build the card detail lines identifying the target."""
     if user is not None:
         user_name = user.first_name + (f" {user.last_name}" if user.last_name else "")
-        return [f"User: {user_name}", f"ID: `{user_id}`"]
+        # Escaped: Msg.card does not escape its details, and this is the target's
+        # own display name -- a name containing tags would be honoured in the
+        # confirmation we send.
+        return [f"User: {html_esc(user_name)}", f"ID: `{user_id}`"]
     return [f"User ID: `{user_id}`"]
 
 
@@ -66,7 +69,10 @@ async def add_to_sudo(client, message):
             upsert=True
         )
         await message.edit(Msg.card("Sudo Access Granted", detail + ["Can now run sudo commands"], emoji=Msg.EMOJI_SUCCESS))
-        SUDO[client.me.id].append(target_user_id)
+        # Guarded: the in-memory list and the DB can disagree after a manual DB
+        # edit, and a duplicate entry here would make rmsudo look like it failed.
+        if target_user_id not in SUDO[client.me.id]:
+            SUDO[client.me.id].append(target_user_id)
     else:
         await message.edit(Msg.card("Already Has Sudo Access", detail + ["Already has sudo access"], emoji=Msg.EMOJI_INFO))
 
@@ -95,7 +101,11 @@ async def remove_from_sudo(client, message):
             {"$pull": {"sudoers": target_user_id}}
         )
         await message.edit(Msg.card("Sudo Access Revoked", detail + ["Removed from sudoers"], emoji=Msg.EMOJI_WARNING))
-        SUDO[client.me.id].remove(target_user_id)
+        # list.remove() raises ValueError when the DB lists a sudoer the running
+        # process never loaded; the success message has already been sent by
+        # then, so the unhandled error made a successful revoke look broken.
+        if target_user_id in SUDO[client.me.id]:
+            SUDO[client.me.id].remove(target_user_id)
     else:
         await message.edit(Msg.card("Not in Sudo List", detail + ["Not in sudoers list"], emoji=Msg.EMOJI_INFO))
 

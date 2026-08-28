@@ -114,9 +114,13 @@ def get_args(message):
 @retry()
 async def inv(client, message):
     sender = client.me.id
-    Man = await message.edit_text("`Processing . . .`")
     text = message.text.split(" ", 1)
-    queryy = text[1]
+    if len(text) < 2 or not text[1].strip():
+        # text[1] was read unconditionally, so a bare .inv raised IndexError --
+        # and @retry() re-ran the handler to raise it again.
+        return await message.edit_text(styled_error("Usage: <code>.inv &lt;chat&gt;</code>"))
+    Man = await message.edit_text("`Processing . . .`")
+    queryy = text[1].strip()
     chat = await client.get_chat(queryy)
     tgchat = message.chat
     await Man.edit_text(f"inviting users from {chat.username}")
@@ -131,14 +135,14 @@ async def inv(client, message):
             try:
                 await client.add_chat_members(tgchat.id, user.id)
                 await asyncio.sleep(3)
-            except UserRestricted as e:
-              mg = await bot.send_message(sender, f"**ERROR:** `{e}`")
-              break
-            except PeerFlood as e:
-             mg = await bot.send_message(sender, f"**ERROR:** `{e}`")
-             break
+            except (UserRestricted, PeerFlood) as e:
+                # The details were interpolated into a message the default parse
+                # mode reads as HTML, so an error mentioning a <tag> arrived with
+                # that part deleted. styled_error escapes them.
+                await bot.send_message(sender, styled_error("Invite stopped", details=e))
+                break
             except Exception as e:
-                mg = await bot.send_message(sender, f"**ERROR:** `{e}`")
+                mg = await bot.send_message(sender, styled_error("Invite failed", details=e))
                 await asyncio.sleep(3)
                 await mg.delete()
 

@@ -28,49 +28,62 @@ logger.info(f"[USERBOT] Plugin loaded at {current_time.strftime('%Y-%m-%d %H:%M:
 create_custom_filter = filters.create(lambda _, __, message: re.match(getuser_data(message.from_user.id).get("save_com", "^(Wow|wow)$"), message.text) if message.from_user else False)
 
 
-def build_media_caption(from_user, chat, message, is_private, include_caption=True, recipient=None):
-    """Build the '📥 Media Saved' caption/details block.
+def build_media_caption(from_user, chat, message, is_private, include_caption=True,
+                        recipient=None, title="Media Saved", text_label="Caption"):
+    """Build the '📥 Media Saved' caption/details block, as HTML.
+
+    Every field below comes from whoever sent the message we are archiving, so
+    all of them are escaped and the result must be sent with
+    ``parse_mode=enums.ParseMode.HTML``. This block used to be markdown with the
+    fields interpolated raw, which meant a display name of '**' or '[x](url)'
+    reshaped the whole caption -- and because the default parse mode processes
+    markdown *and* HTML, a name containing a tag was silently deleted from it
+    while a name of '<a href="...">click</a>' became a real link in our own
+    saved messages. The original message body (``Caption:``) is the worst case:
+    it is a stranger's entire text.
 
     :param is_private: whether the source chat is a private chat
     :param include_caption: append the original message caption/text if present
     :param recipient: if provided (and is_private), include recipient info
+    :param title: heading for the block
+    :param text_label: label for the appended original text
     """
-    caption = f"📥 **Media Saved**\n\n"
-    caption += f"👤 **From:** {from_user.first_name}"
+    caption = f"📥 <b>{title}</b>\n\n"
+    caption += f"👤 <b>From:</b> {html_esc(from_user.first_name)}"
     if from_user.last_name:
-        caption += f" {from_user.last_name}"
+        caption += f" {html_esc(from_user.last_name)}"
     if from_user.username:
-        caption += f" (@{from_user.username})"
-    caption += f"\n🆔 **User ID:** `{from_user.id}`\n"
+        caption += f" (@{html_esc(from_user.username)})"
+    caption += f"\n🆔 <b>User ID:</b> <code>{from_user.id}</code>\n"
 
     if is_private:
         if recipient is not None:
-            caption += f"\n👥 **To:** {recipient.first_name}"
+            caption += f"\n👥 <b>To:</b> {html_esc(recipient.first_name)}"
             if recipient.last_name:
-                caption += f" {recipient.last_name}"
+                caption += f" {html_esc(recipient.last_name)}"
             if recipient.username:
-                caption += f" (@{recipient.username})"
-            caption += f"\n🆔 **Recipient ID:** `{recipient.id}`\n"
-        caption += f"💬 **Chat:** Private Chat\n"
+                caption += f" (@{html_esc(recipient.username)})"
+            caption += f"\n🆔 <b>Recipient ID:</b> <code>{recipient.id}</code>\n"
+        caption += f"💬 <b>Chat:</b> Private Chat\n"
     else:
-        caption += f"💬 **Chat:** {chat.title or 'Unknown'}\n"
+        caption += f"💬 <b>Chat:</b> {html_esc(chat.title or 'Unknown')}\n"
         if chat.username:
-            caption += f"🔗 **Username:** @{chat.username}\n"
+            caption += f"🔗 <b>Username:</b> @{html_esc(chat.username)}\n"
 
-    caption += f"🆔 **Chat ID:** `{chat.id}`\n"
-    caption += f"#️⃣ **Message ID:** `{message.id}`\n"
+    caption += f"🆔 <b>Chat ID:</b> <code>{chat.id}</code>\n"
+    caption += f"#️⃣ <b>Message ID:</b> <code>{message.id}</code>\n"
 
     if message.date:
-        caption += f"📅 **Date:** {message.date.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        caption += f"📅 <b>Date:</b> {message.date.strftime('%Y-%m-%d %H:%M:%S')}\n"
 
     if not is_private and chat.username:
         message_link = f"https://t.me/{chat.username}/{message.id}"
-        caption += f"🔗 **Link:** {message_link}\n"
+        caption += f"🔗 <b>Link:</b> {message_link}\n"
 
     if include_caption:
         original_text = message.text if message.caption is None else message.caption
         if original_text:
-            caption += f"\n📝 **Caption:** {original_text}\n"
+            caption += f"\n📝 <b>{text_label}:</b>\n{html_esc(original_text)}\n"
 
     return caption
 
@@ -111,6 +124,7 @@ async def handle_message(client, message):
                 await client.send_message(
                     chat_id="me",
                     text=details,
+                    parse_mode=enums.ParseMode.HTML,
                     reply_to_message_id=copied_msg.id
                 )
             except (ChatForwardsRestricted, FileReferenceExpired):
@@ -153,60 +167,50 @@ async def handle_message(client, message):
 
                     if os.path.getsize(file_path) <= 2000000000:
                         if file_extension.lower() in ['jpg', 'jpeg', 'png', 'gif']:
-                            await client.send_photo(chat_id="me", photo=file_path, caption=caption, progress=progress_bar)
+                            await client.send_photo(chat_id="me", photo=file_path, caption=caption, parse_mode=enums.ParseMode.HTML, progress=progress_bar)
                         elif file_extension.lower() in ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a']:
-                            await client.send_audio(chat_id="me", audio=file_path, caption=caption, progress=progress_bar)
+                            await client.send_audio(chat_id="me", audio=file_path, caption=caption, parse_mode=enums.ParseMode.HTML, progress=progress_bar)
                         elif file_extension.lower() in ['mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv']:
                             thumb_path = f"{file_path}_thumb.jpg"
                             try:
                                 generate_thumbnail(file_path, thumb_path)
                                 duration = with_opencv(file_path)
-                                await client.send_video(chat_id="me", video=file_path, caption=caption, progress=progress_bar, duration=duration, thumb=thumb_path)
+                                await client.send_video(chat_id="me", video=file_path, caption=caption, parse_mode=enums.ParseMode.HTML, progress=progress_bar, duration=duration, thumb=thumb_path)
                             except Exception as e:
                                 logger.warning(f"Error generating thumbnail: {e}")
-                                await client.send_video(chat_id="me", video=file_path, caption=caption, progress=progress_bar)
+                                await client.send_video(chat_id="me", video=file_path, caption=caption, parse_mode=enums.ParseMode.HTML, progress=progress_bar)
                             finally:
                                 if os.path.exists(thumb_path):
                                     os.remove(thumb_path)
                         else:
-                            await client.send_document("me", file_path, caption=caption, progress=progress_bar)
+                            await client.send_document("me", file_path, caption=caption, parse_mode=enums.ParseMode.HTML, progress=progress_bar)
                     else:
                         await msg.edit_text(Msg.ERR_FILE_TOO_LARGE)
                     await msg.delete()
                     os.remove(file_path)
                 else:
-                    # Text message - send with details
-                    details = f"📥 **Message Saved**\n\n"
-                    details += f"👤 **From:** {from_user.first_name}"
-                    if from_user.last_name:
-                        details += f" {from_user.last_name}"
-                    if from_user.username:
-                        details += f" (@{from_user.username})"
-                    details += f"\n🆔 **User ID:** `{from_user.id}`\n"
+                    # Text message - send with details. This used to be a
+                    # hand-rolled markdown copy of build_media_caption() with
+                    # the same raw-interpolation bug; the shared builder already
+                    # escapes every field, and message.text lands in the
+                    # include_caption branch.
+                    details = build_media_caption(
+                        from_user, chat, target_message,
+                        is_private=is_private,
+                        title="Message Saved",
+                        text_label="Text",
+                    )
 
-                    if is_private:
-                        details += f"💬 **Chat:** Private Chat\n"
-                    else:
-                        details += f"💬 **Chat:** {chat.title or 'Unknown'}\n"
-                        if chat.username:
-                            details += f"🔗 **Username:** @{chat.username}\n"
-
-                    details += f"🆔 **Chat ID:** `{chat.id}`\n"
-                    details += f"#️⃣ **Message ID:** `{target_message.id}`\n"
-
-                    if target_message.date:
-                        details += f"📅 **Date:** {target_message.date.strftime('%Y-%m-%d %H:%M:%S')}\n"
-
-                    if not is_private and chat.username:
-                        message_link = f"https://t.me/{chat.username}/{target_message.id}"
-                        details += f"🔗 **Link:** {message_link}\n"
-
-                    details += f"\n📝 **Text:**\n{target_message.text}"
-
-                    await client.send_message("me", details)
+                    await client.send_message(
+                        "me", details, parse_mode=enums.ParseMode.HTML
+                    )
         except Exception as e:
             try:
-                await client.send_message("me", styled_error(f"Error: {e}"))
+                await client.send_message(
+                    "me",
+                    styled_error("Could not save that message.", details=str(e)),
+                    parse_mode=enums.ParseMode.HTML,
+                )
             except Exception:
                 pass
 
@@ -323,6 +327,7 @@ async def auto_download_media(client, message: Message):
                 # Add caption for media types that support it
                 if media_type not in ['video_note']:
                     kwargs['caption'] = caption_saved
+                    kwargs['parse_mode'] = enums.ParseMode.HTML
 
                 # Add thumbnail for videos
                 if media_type == 'video':
@@ -349,6 +354,7 @@ async def auto_download_media(client, message: Message):
                 }
                 if media_type not in ['video_note']:
                     kwargs['caption'] = caption_group
+                    kwargs['parse_mode'] = enums.ParseMode.HTML
 
                 if media_type == 'video':
                     thumb_path = f"{file_path}_thumb.jpg"

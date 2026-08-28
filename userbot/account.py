@@ -28,13 +28,24 @@ async def get_all_blocked_users(client):
 
     return [user.peer_id.user_id for user in blocked_users if user.peer_id]  # Extract user IDs
 
+# users.getUsers takes at most 200 ids per call and kurigram does not split the
+# list for you, so an account with a few hundred blocked users made .stats fail
+# outright on the RPC.
+_GET_USERS_BATCH = 200
+
+
 async def categorize_blocked_users(client, blocked_user_ids):
     users = []
     bots = []
 
-    if blocked_user_ids:
-        # Fetch all user details using get_users
-        user_details = await client.get_users(blocked_user_ids)
+    for start in range(0, len(blocked_user_ids), _GET_USERS_BATCH):
+        batch = blocked_user_ids[start:start + _GET_USERS_BATCH]
+        try:
+            user_details = await client.get_users(batch)
+        except Exception as e:
+            # One unresolvable id should not cost the whole count.
+            logger.warning(f"stats: could not resolve {len(batch)} blocked users: {e}")
+            continue
         for user in user_details:
             if user.is_bot:
                 bots.append(user.id)
@@ -130,9 +141,19 @@ async def status(client, message):
 
 
 import datetime
+import logging
 from pyrogram import Client, filters
 from pyrogram.raw import functions
 from tools import *
+
+# Declared after the last `from tools import *`, which would otherwise rebind
+# `logger` to tools' own and file these lines under the wrong name.
+logger = logging.getLogger("account")
+
+# A single message caps out at 4096 characters and a busy account can have far
+# more sessions than fit; send them in batches rather than failing the command.
+_MAX_MESSAGE_CHARS = 3800
+
 
 def format_timestamp(ts):
     return datetime.datetime.utcfromtimestamp(ts).strftime('%B %d, %Y, %H:%M:%S')
@@ -141,22 +162,41 @@ def format_timestamp(ts):
 @retry()
 async def session_handler(client, message):
     result = await client.invoke(functions.account.GetAuthorizations())
-    
-    session_info = "**ACTIVE SESSIONS**"
-    
-    # Iterate through each session and build the session info string
+
+    # Device model, app name and country for every login on the account. All of
+    # it is text supplied by whatever client logged in, so it is escaped, and it
+    # is not something to print into whichever group the command was typed in --
+    # which is what this did. Details go to saved messages.
+    blocks = []
     for session in result.authorizations:
-        session_info += (f"""
-<blockquote>Device: {session.device_model}</blockquote>
-<blockquote>Platform: {session.platform}</blockquote>
-<blockquote>App Name: {session.app_name} (Version: {session.app_version}</blockquote>
-<blockquote>Country: {session.country}</blockquote>
+        blocks.append(f"""
+<blockquote>Device: {html_esc(session.device_model)}</blockquote>
+<blockquote>Platform: {html_esc(session.platform)}</blockquote>
+<blockquote>App Name: {html_esc(session.app_name)} (Version: {html_esc(session.app_version)})</blockquote>
+<blockquote>Country: {html_esc(session.country)}</blockquote>
 <blockquote>Current Session: {session.current}</blockquote>
 <blockquote>Created On: {format_timestamp(session.date_created)}</blockquote>
 <blockquote>Last Active: {format_timestamp(session.date_active)}</blockquote>\n\n""")
-    
-    # Edit the message with the session details
-    await message.edit_text(session_info)
+
+    # Group the blocks into messages that fit.
+    pages = []
+    current = "<b>ACTIVE SESSIONS</b>"
+    for block in blocks:
+        if len(current) + len(block) > _MAX_MESSAGE_CHARS:
+            pages.append(current)
+            current = ""
+        current += block
+    pages.append(current)
+
+    in_own_dm = message.chat.id == client.me.id
+    if in_own_dm:
+        await message.edit_text(pages[0])
+        rest = pages[1:]
+    else:
+        await message.edit_text(f"🔐 <b>{len(blocks)} active session(s)</b> — details sent to your saved messages.")
+        rest = pages
+    for page in rest:
+        await client.send_message(client.me.id, page)
 
 
 @Client.on_message(filters.command("bio", prefixes=HARDCODED_PREFIXES) & filters.me)

@@ -428,6 +428,13 @@ async def unpin_handler(client: Client, message: Message):
 
 @Client.on_message(filters.command("acceptall", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()) & filters.group)
 async def accept_join_requests(client, message):
+    # Open to sudo users, so authorize the sender rather than relying on the
+    # account's own rights -- otherwise an ordinary member with sudo could bulk
+    # approve every pending join request in any group the operator administers.
+    if not message.from_user or not await is_user_admin(client, message.chat.id, message.from_user.id):
+        await message.reply(Msg.ERR_ADMIN_REQUIRED)
+        return
+
     # Get chat_id from command or use current chat
     chat_id = message.chat.id
     

@@ -5,6 +5,7 @@ from pyrogram import Client, filters, enums
 from pyrogram.enums import ChatMemberStatus
 
 from tools import *
+from userbot.admin import is_user_admin
 from utils.message import Msg
 
 logger = logging.getLogger("userbot.moderation")
@@ -39,6 +40,15 @@ async def inline_handler_ban(client, message):
 async def unban_all_users(client, message):
     """Unban all users from the chat without confirmation"""
     try:
+        # The command is open to sudo users, so the *sender* has to be authorized
+        # too. The check below only asks whether the account has the right to
+        # unban, which any sudo user could borrow: an ordinary member could
+        # otherwise wipe the whole ban list of any group the operator moderates.
+        # Nine sibling commands in admin.py already gate on this.
+        if not message.from_user or not await is_user_admin(client, message.chat.id, message.from_user.id):
+            await message.reply(Msg.ERR_ADMIN_REQUIRED)
+            return
+
         await delete_if_self(message)
 
         chat_id = message.chat.id

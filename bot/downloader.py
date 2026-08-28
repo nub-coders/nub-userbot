@@ -14,7 +14,6 @@ dropped — the userbot is either connected (clients[sender]) or it isn't.
 import os
 import time
 import random
-import shutil
 import asyncio
 import logging
 from urllib.parse import urlparse
@@ -419,7 +418,16 @@ async def _download_messages_batch(userbot, sender, chat_id, message_ids=None, c
                     if os.path.exists(file_path):
                         os.remove(file_path)
             elif m.text:
-                await app.send_message(sender, m.text)
+                # Relayed verbatim: under the client's default parse mode a
+                # message containing <tags> lost them silently, and stray
+                # asterisks or underscores were read as markdown. Entities carry
+                # the original formatting instead.
+                await app.send_message(
+                    sender,
+                    m.text,
+                    parse_mode=ParseMode.DISABLED,
+                    entities=m.entities,
+                )
                 success += 1
             await asyncio.sleep(1)  # flood control between messages
         except FloodWait as e:
@@ -445,5 +453,9 @@ async def _download_messages_batch(userbot, sender, chat_id, message_ids=None, c
         completion_html,
         parse_mode=ParseMode.HTML,
     )
-    shutil.rmtree(user_dir, ignore_errors=True)
+    # No rmtree here. user_<id>/ is not this function's directory: music.py
+    # streams downloads out of user_<id>/<chat_id>/, status.py and stickers.py
+    # cache logo.jpg and thumbnails in it, and forward.py writes there too.
+    # Deleting it wiped whatever those were doing mid-flight. The per-file
+    # `finally` above already removes everything this batch created.
 

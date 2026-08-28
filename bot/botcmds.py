@@ -206,8 +206,23 @@ async def start_handler(client, message: Message):
 
 
 
+# ─────────────────────────── authorization ─────────────────────────────────
+# This is the *bot* client, not the userbot: anyone who finds the bot on Telegram
+# can message it, so `filters.private` says where a message came from, not who is
+# allowed. Handlers that report host telemetry, resolve arbitrary users, or write
+# to the shared `user_sessions` store carry this filter; /start and the static
+# command browser stay public because they disclose nothing. `_is_owner` is
+# defined further down and looked up when the filter runs, not when it is built.
+def _owner_filter():
+    """Filter matching only the owner, for messages and callback queries alike."""
+    async def func(_, __, update):
+        user = getattr(update, "from_user", None)
+        return bool(user and _is_owner(user.id))
+    return filters.create(func)
+
+
 # ─────────────────────────── /ping ─────────────────────────────────────────
-@Client.on_message(filters.command("ping") & filters.private)
+@Client.on_message(filters.command("ping") & filters.private & _owner_filter())
 async def ping_command(client, message: Message):
     uptime = await get_readable_time((time.time() - StartTime))
     start = datetime.datetime.now()
@@ -304,7 +319,7 @@ async def back_handler(client, callback_query: CallbackQuery):
 
 
 # ─────────────────────────── /settings ─────────────────────────────────────
-@Client.on_message(filters.command("settings") & filters.private)
+@Client.on_message(filters.command("settings") & filters.private & _owner_filter())
 async def settings_handler(client, message: Message):
     sender_id = message.from_user.id
     user_data = user_sessions.find_one({"user_id": sender_id}) or {"user_id": sender_id}
@@ -312,7 +327,7 @@ async def settings_handler(client, message: Message):
     await message.reply(text, reply_markup=markup, parse_mode=ParseMode.HTML)
 
 
-@Client.on_callback_query(filters.regex(r"^toggle_"))
+@Client.on_callback_query(filters.regex(r"^toggle_") & _owner_filter())
 async def toggle_setting(client, callback_query: CallbackQuery):
     sender_id = callback_query.from_user.id
     user_data = user_sessions.find_one({"user_id": sender_id}) or {"user_id": sender_id}
@@ -345,7 +360,7 @@ async def toggle_setting(client, callback_query: CallbackQuery):
     await callback_query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
 
 
-@Client.on_callback_query(filters.regex(r"^save_settings$"))
+@Client.on_callback_query(filters.regex(r"^save_settings$") & _owner_filter())
 async def save_settings(client, callback_query: CallbackQuery):
     sender_id = callback_query.from_user.id
     user_data = user_sessions.find_one({"user_id": sender_id}) or {"user_id": sender_id}
@@ -370,7 +385,7 @@ async def save_settings(client, callback_query: CallbackQuery):
 
 
 # ─────────────────────────── /status ───────────────────────────────────────
-@Client.on_message(filters.command("status") & filters.private)
+@Client.on_message(filters.command("status") & filters.private & _owner_filter())
 async def status_handler(client, message: Message):
     command_args = message.text.split()
     if message.reply_to_message and message.reply_to_message.from_user:
@@ -525,7 +540,7 @@ async def inline_query_handler(client, query: InlineQuery):
 
 
 # ─────────────────────────── banall callbacks ──────────────────────────────
-@Client.on_callback_query(filters.regex(r"^banall_(cancel|confirm)_(-?\d+)"))
+@Client.on_callback_query(filters.regex(r"^banall_(cancel|confirm)_(-?\d+)") & _owner_filter())
 async def banall_callback_handler(client, callback_query: CallbackQuery):
     match = callback_query.matches[0]
     action = match.group(1)

@@ -312,7 +312,15 @@ async def dend(client, update, channel_id=None):
         logger.info(f"Error in end function: {e}")
 
 # Music command handlers
-@Client.on_message(filters.command(["play", "vplay", "playforce", "vplayforce"], prefixes=HARDCODED_PREFIXES))
+# `is_music_on` is a feature toggle, not an authorization check: it reads the
+# *owner's* `music` flag, so once the owner turns music on it says yes to whoever
+# sent the command. Every handler below therefore carries its own sender gate.
+# Without one, any member of any group the account is in could drive voice-chat
+# joins and unbounded downloads on the owner's host (`.queue` below always had
+# the gate, which is what made the omission on the rest look accidental).
+# Sudo users are allowed through because delegating playback is the point of a
+# music plugin in a group; tighten to plain `filters.me` if that is unwanted.
+@Client.on_message(filters.command(["play", "vplay", "playforce", "vplayforce"], prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 @is_music_on()
 async def play_handler_func(client, message):
     if str(message.chat.id) == '-1001806816712':
@@ -485,7 +493,7 @@ async def play_handler_func(client, message):
         await dend(client, massage, None)
     # Message deletion removed - keeping original message
 
-@Client.on_message(filters.command("end", prefixes=HARDCODED_PREFIXES))
+@Client.on_message(filters.command("end", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 @is_music_on()
 async def end_handler_func(client, message):
     # Message deletion removed - keeping original message
@@ -514,7 +522,7 @@ async def end_handler_func(client, message):
         if message.chat.id in playing:
             playing[message.chat.id].clear()
 
-@Client.on_message(filters.command("skip", prefixes=HARDCODED_PREFIXES))
+@Client.on_message(filters.command("skip", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 @is_music_on()
 async def skip_handler_func(client, message):
     # Message deletion removed - keeping original message
@@ -551,7 +559,7 @@ async def skip_handler_func(client, message):
         if message.chat.id in playing:
             playing[message.chat.id].clear()
 
-@Client.on_message(filters.command("pause", prefixes=HARDCODED_PREFIXES))
+@Client.on_message(filters.command("pause", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 @is_music_on()
 async def pause_handler_func(client, message):
     try:
@@ -565,7 +573,7 @@ async def pause_handler_func(client, message):
     except NotInCallError:
         await client.send_message(message.chat.id, Msg.card("No Stream", ["Nothing is playing right now."], emoji=Msg.EMOJI_WARNING, footer="Use /play to start"), reply_to_message_id=message.id)
 
-@Client.on_message(filters.command("resume", prefixes=HARDCODED_PREFIXES))
+@Client.on_message(filters.command("resume", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 @is_music_on()
 async def resume_handler_func(client, message):
     try:
@@ -579,7 +587,7 @@ async def resume_handler_func(client, message):
     except NotInCallError:
         await client.send_message(message.chat.id, Msg.card("No Stream", ["Nothing is playing right now."], emoji=Msg.EMOJI_WARNING, footer="Use /play to start"), reply_to_message_id=message.id)
 
-@Client.on_message(filters.command("loop", prefixes=HARDCODED_PREFIXES))
+@Client.on_message(filters.command("loop", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 @is_music_on()
 async def loop_handler_func(client, message):
     # Message deletion removed - keeping original message

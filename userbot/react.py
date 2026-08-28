@@ -1,22 +1,46 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message, MessageEntity
 from pyrogram.enums import MessageEntityType
+from pyrogram.parser.utils import add_surrogates, remove_surrogates
 import asyncio
 from config import *
 from tools import *
 from utils.message import Msg
 
 async def _mentioned_me(_, client, message: Message):
-    if not message.entities:
+    me = client.me
+    if not me:
         return False
 
-    for entity in message.entities:
+    # A caption's entities live in caption_entities, so a mention in a photo or
+    # video caption was invisible to this filter.
+    text = message.text or message.caption or ""
+    entities = message.entities or message.caption_entities or []
+    if not text or not entities:
+        return False
+
+    # Entity offsets count UTF-16 code units, which is what Telegram measures in,
+    # while Python slices by code point. One emoji earlier in the message shifted
+    # every following offset by one, so "👋 @me" sliced the wrong characters and the
+    # mention was missed. add_surrogates puts the text into the same units as the
+    # offsets -- the same thing kurigram's own unparser does before indexing.
+    surrogated = add_surrogates(text)
+    my_username = (me.username or "").lower()
+
+    for entity in entities:
         if entity.type == MessageEntityType.MENTION:
-            mentioned_user = message.text[entity.offset:entity.offset + entity.length]
-            if mentioned_user == f"@{client.me.username}":
+            if not my_username:
+                continue
+            mentioned_user = remove_surrogates(
+                surrogated[entity.offset:entity.offset + entity.length]
+            )
+            # Usernames are case-insensitive on Telegram: someone typing
+            # "@NubBot" is mentioning "nubbot", and the exact comparison here
+            # used to reject it.
+            if mentioned_user.lower() == f"@{my_username}":
                 return True
         elif entity.type == MessageEntityType.TEXT_MENTION:
-            if entity.user and entity.user.id == client.me.id:
+            if entity.user and entity.user.id == me.id:
                 return True
     return False
 

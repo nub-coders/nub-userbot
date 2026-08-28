@@ -15,6 +15,7 @@ import datetime
 import subprocess
 import base64
 import html
+import json
 import logging
 from io import BytesIO, StringIO
 from urllib.parse import parse_qs, urlparse
@@ -32,6 +33,20 @@ from pyrogram.raw.functions.channels import GetFullChannel
 from pyrogram.raw.functions.messages import GetFullChat
 from pyrogram.raw.types import InputPeerChannel, InputPeerChat
 
+# py-tgcalls: only the pieces the playback runtime at the bottom of this file
+# needs. PyTgCalls itself is deliberately absent -- main.py constructs the one
+# call client per account and puts it in config.songs_client.
+from pytgcalls import filters as call_filters
+from pytgcalls.types import (
+    AudioQuality,
+    ChatUpdate,
+    GroupCallConfig,
+    MediaStream,
+    StreamEnded,
+    VideoQuality,
+)
+from pytgcalls.exceptions import NoActiveGroupCall, NotInCallError
+
 # Media processing imports
 from pymediainfo import MediaInfo
 import cv2
@@ -47,7 +62,19 @@ mime = magic.Magic(mime=True)
 
 logger = logging.getLogger("tools")
 
-from config import apps, clients, user_sessions, admin_file, SUDO, HARDCODED_PREFIXES
+from config import (
+    apps,
+    clients,
+    user_sessions,
+    admin_file,
+    SUDO,
+    HARDCODED_PREFIXES,
+    active,
+    songs_client,
+    queues,
+    playing,
+)
+from utils.message import Msg
 
 
 # ─────────────────── download destination confinement ───────────────────────
@@ -1282,3 +1309,346 @@ async def resize_media(media: str, video: bool, fast_forward: bool) -> str:
     os.remove(media)
     return resized_photo
 
+
+# ══════════════════════ VOICE CALL PLAYBACK RUNTIME ══════════════════════
+# The shared half of the music feature, split the way the upstream deployer
+# splits it: state in config, runtime here, commands in userbot/music.py.
+#
+# It lives in tools rather than in the plugin because main.py has to wire the
+# call client at startup and must not import from userbot/ to do it: those
+# modules are loaded by pyrogram's own plugin loader, and importing one directly
+# would load it a second time under a different module name, giving the plugin
+# two copies of every module-level dict -- one holding the handlers pyrogram
+# dispatches to, the other holding the queue main.py seeded.
+#
+#   config.queues   {f"dic_{owner_id}": {chat_id: [song, ...]}}  what is waiting
+#   config.playing  {chat_id: song}                              what is on air
+#
+# A "song" is the dict built by put_queue() in userbot/music.py. `playing` holds
+# a *copy* of it: the .loop command re-queues the playing song, and several
+# handlers call playing[chat].clear(), which would otherwise empty the queued
+# entries too.
+
+# Style 11 is the plain one; it is what the queue message has always asked for.
+DEFAULT_STYLE = 11
+QUEUE_FALLBACK = (
+    "➕ **Added to queue**\n┃ **Mode:** {}\n┃ **Title:** {}\n"
+    "┃ **Duration:** {}\n╰▸ **Position:** #{}"
+)
+PLAY_FALLBACK = (
+    "🎧 **Now Playing**\n┃ **Mode:** {}\n┃ **Title:** {}\n"
+    "┃ **Duration:** {}\n╰▸ **Requested by:** {}"
+)
+_STYLE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+
+
+def _load_styles(filename: str, fallback: str) -> Dict[int, str]:
+    """Load the numbered message templates from data/, keyed by int.
+
+    The JSON keys are strings but every call site indexes with an int. Templates
+    with the wrong number of {} slots are dropped rather than allowed to raise
+    IndexError mid-playback, and DEFAULT_STYLE is always present so indexing it
+    cannot fail even with the file missing or corrupt.
+    """
+    styles: Dict[int, str] = {}
+    path = os.path.join(_STYLE_DIR, filename)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        for key, template in (raw or {}).items():
+            if not isinstance(template, str) or template.count("{}") != 4:
+                logger.warning(f"[MUSIC] Skipping style {key} in {filename}: needs exactly 4 slots")
+                continue
+            try:
+                styles[int(key)] = template
+            except (TypeError, ValueError):
+                logger.warning(f"[MUSIC] Skipping non-numeric style key {key!r} in {filename}")
+    except Exception as e:
+        logger.warning(f"[MUSIC] Could not load {path}: {e}")
+    styles.setdefault(DEFAULT_STYLE, fallback)
+    return styles
+
+
+queue_styles = _load_styles("queue_styles.json", QUEUE_FALLBACK)
+play_styles = _load_styles("play_styles.json", PLAY_FALLBACK)
+
+# One lock per chat, plus the time its last advance finished. A video track ends
+# its audio and its video stream separately -- StreamEnded carries a stream_type
+# saying which -- and py-tgcalls hands every end event to the loop as its own
+# task (run_coroutine_threadsafe, from the ntgcalls thread), so the pair arrives
+# as two concurrent handler calls that must not each pull a song off the queue.
+_advance_locks: Dict[int, asyncio.Lock] = {}
+_last_advance: Dict[int, float] = {}
+# The two end events of one track arrive within milliseconds of each other, so
+# this window is what separates them from a genuine end of the *next* track. A
+# track shorter than the window would have its own end event read as the
+# duplicate and playback would sit there until the next command; nothing a queue
+# plays is that short.
+DUPLICATE_END_WINDOW = 2.0
+
+
+async def is_active_chat(client, chat_id):
+    if hasattr(client, 'me') and client.me.id in active:
+        return chat_id in active[client.me.id]
+    return False
+
+
+async def add_active_chat(client, chat_id):
+    if hasattr(client, 'me'):
+        if client.me.id not in active:
+            active[client.me.id] = []
+        if chat_id not in active[client.me.id]:
+            active[client.me.id].append(chat_id)
+
+
+async def remove_active_chat(client, chat_id):
+    """Mirror of add_active_chat: forget that we are streaming in this chat."""
+    if not hasattr(client, 'me'):
+        return
+    chats = active.get(client.me.id)
+    if chats and chat_id in chats:
+        chats.remove(chat_id)
+
+
+def no_call_client_card():
+    """Shown when songs_client is empty: main.py could not start the call client."""
+    return Msg.card(
+        "Voice Calls Unavailable",
+        ["The voice call client is not running."],
+        emoji=Msg.EMOJI_ERROR,
+        footer="Check the startup log and restart",
+    )
+
+
+def _pick_source(yt_link, stream_url) -> Optional[str]:
+    """Choose what to hand ffmpeg: a downloaded file, else a direct URL.
+
+    A local path always wins -- it is already on disk and cannot expire.
+    Otherwise the direct stream URL from youtube.py, and failing that the watch
+    URL, which py-tgcalls resolves through yt-dlp itself.
+    """
+    if yt_link and os.path.exists(str(yt_link)):
+        return str(yt_link)
+    return stream_url or yt_link or None
+
+
+def _cleanup_song_file(song: Optional[dict], keep: list) -> None:
+    """Delete a finished track's download unless something still needs it.
+
+    Downloads used to accumulate under user_<id>/<chat_id>/ forever: nothing
+    ever removed them. `keep` is the remaining queue, because .loop re-queues
+    the same dict and would otherwise be left pointing at a file we just
+    deleted.
+    """
+    if not song:
+        return
+    path = song.get("yt_link")
+    if not path or not isinstance(path, str) or not os.path.exists(path):
+        return
+    # Only ever touch our own download directory.
+    if not os.path.basename(os.path.dirname(os.path.dirname(path))).startswith("user_"):
+        return
+    if any(other.get("yt_link") == path for other in keep):
+        return
+    try:
+        os.remove(path)
+        logger.debug(f"[MUSIC] Removed finished download {path}")
+    except OSError as e:
+        logger.debug(f"[MUSIC] Could not remove {path}: {e}")
+
+
+async def _say(message, client, chat_id, text):
+    """Edit the status message, or send a new one if it is gone."""
+    try:
+        if message is not None:
+            return await message.edit(text)
+    except Exception as e:
+        logger.debug(f"[MUSIC] Status edit failed, sending instead: {e}")
+    try:
+        return await client.send_message(chat_id, text)
+    except Exception as e:
+        logger.warning(f"[MUSIC] Could not report to {chat_id}: {e}")
+
+
+async def drop_chat(client, chat_id):
+    """Forget everything about a chat after a failed or finished stream."""
+    await remove_active_chat(client, chat_id)
+    song_queue = queues.get(f"dic_{client.me.id}") or {}
+    for song in song_queue.pop(chat_id, []):
+        _cleanup_song_file(song, [])
+    playing.pop(chat_id, None)
+
+
+async def join_call(message, title, client, yt_link, chat, by, duration, mode, stream_url=None):
+    """Join the chat's voice call and stream one track.
+
+    Called by dend() when a track comes off the queue and by .skip. On failure
+    it clears the chat's state rather than leaving `active` claiming a stream
+    that is not running.
+    """
+    chat_id = chat.id
+    audio_only = str(mode).lower() != "video"
+    source = _pick_source(yt_link, stream_url)
+    if not source:
+        await _say(message, client, chat_id, styled_error("Nothing to stream", hint="The download or lookup produced no media"))
+        await drop_chat(client, chat_id)
+        return False
+
+    # Read the call client main.py started; never build one here. If it is
+    # missing, startup failed and there is nothing to stream through.
+    call_py = songs_client.get(client.me.id)
+    if call_py is None:
+        logger.error("[MUSIC] No call client for %s; startup must have failed", client.me.id)
+        await _say(message, client, chat_id, no_call_client_card())
+        await drop_chat(client, chat_id)
+        return False
+
+    stream = MediaStream(
+        source,
+        audio_parameters=AudioQuality.HIGH,
+        video_parameters=VideoQuality.SD_480p,
+        # IGNORE, not AUTO_DETECT: .play on a video file must stay audio-only,
+        # otherwise it silently turns into a video stream.
+        video_flags=MediaStream.Flags.IGNORE if audio_only else MediaStream.Flags.AUTO_DETECT,
+    )
+
+    try:
+        # auto_start=False deliberately: creating a group call in somebody's
+        # group is not something .play should do behind their back. `.vc1`
+        # exists for that, and the message below points at it.
+        await call_py.play(chat_id, stream, config=GroupCallConfig(auto_start=False))
+    except NoActiveGroupCall:
+        await _say(message, client, chat_id, Msg.card(
+            "No Voice Chat",
+            ["This chat has no voice chat running."],
+            emoji=Msg.EMOJI_WARNING,
+            footer="[prefix]vc1 to start one",
+        ))
+        await drop_chat(client, chat_id)
+        return False
+    except Exception as e:
+        logger.error(f"[MUSIC] play() failed in {chat_id}: {e}")
+        await _say(message, client, chat_id, styled_error("Could not start the stream", details=str(e)))
+        await drop_chat(client, chat_id)
+        return False
+
+    await add_active_chat(client, chat_id)
+    template = play_styles.get(DEFAULT_STYLE, PLAY_FALLBACK)
+    # Escaped: the title comes from YouTube or from a file name, and this goes
+    # out under a parse mode that also processes HTML.
+    requester = by.mention() if by is not None else "unknown"
+    await _say(message, client, chat_id, template.format(
+        "Video" if not audio_only else "Audio",
+        html_esc(title),
+        duration,
+        requester,
+    ))
+    return True
+
+
+async def dend(client, update, channel_id=None):
+    """Advance the queue in one chat: play the next track, or leave the call.
+
+    `update` is the status message to edit; it may be None when the caller is
+    the stream-end handler, in which case channel_id says which chat.
+    """
+    chat_id = channel_id if channel_id is not None else (update.chat.id if update else None)
+    if chat_id is None:
+        logger.warning("[MUSIC] dend called without a chat to act on")
+        return
+
+    song_queue_key = f"dic_{client.me.id}"
+    song_queue = queues.setdefault(song_queue_key, {})
+
+    # The call client belongs to main.py, which starts it alongside the pyrogram
+    # client. Nothing to advance into if it never came up.
+    call_py = songs_client.get(client.me.id)
+    if call_py is None:
+        logger.error("[MUSIC] No call client for %s; startup must have failed", client.me.id)
+        await _say(update, client, chat_id, no_call_client_card())
+        await drop_chat(client, chat_id)
+        return
+
+    finished = playing.get(chat_id)
+
+    try:
+        if song_queue.get(chat_id):
+            next_song = song_queue[chat_id].pop(0)
+            # A copy, so .clear() on the playing entry elsewhere cannot empty a
+            # song that .loop has also put back in the queue.
+            playing[chat_id] = dict(next_song)
+            if finished is not None:
+                _cleanup_song_file(finished, song_queue.get(chat_id, []))
+            await join_call(
+                next_song['message'], next_song['title'], next_song['client'], next_song['yt_link'],
+                next_song['chat'], next_song['by'], next_song['duration'], next_song['mode'],
+                next_song.get('stream_url'),
+            )
+        else:
+            logger.info(f"Song queue for chat {chat_id} is empty.")
+            try:
+                await call_py.leave_call(chat_id)
+            except (NoActiveGroupCall, NotInCallError):
+                pass
+            await remove_active_chat(client, chat_id)
+            playing.pop(chat_id, None)
+            _cleanup_song_file(finished, [])
+    except Exception as e:
+        # exception(), not info(): join_call reports its own failures, so anything
+        # arriving here is a malformed queue entry or a bug, and "Error in end
+        # function" with no traceback is how this file hid five NameErrors.
+        logger.exception(f"[MUSIC] Queue advance failed in {chat_id}")
+        await _say(update, client, chat_id, styled_error("Could not advance the queue", details=str(e)))
+        await drop_chat(client, chat_id)
+
+
+# The two call-client callbacks main.py registers with add_handler. py-tgcalls
+# invokes a handler as (call_py, update), and PyTgCalls exposes the pyrogram
+# client it was built around as `mtproto_client`, so nothing has to be bound in
+# for these to reach the account they belong to.
+async def stream_end_handler(call_py, update: StreamEnded):
+    """A track finished: play the next one in this chat, or leave the call."""
+    client = call_py.mtproto_client
+    chat_id = update.chat_id
+    lock = _advance_locks.setdefault(chat_id, asyncio.Lock())
+    async with lock:
+        loop = asyncio.get_running_loop()
+        last = _last_advance.get(chat_id)
+        if last is not None and loop.time() - last < DUPLICATE_END_WINDOW:
+            logger.debug(f"[MUSIC] Ignoring the {update.stream_type} end in {chat_id}: already advanced")
+            return
+        logger.info(f"[MUSIC] Stream ended in {chat_id} ({update.stream_type}); advancing queue")
+        try:
+            await dend(client, None, channel_id=chat_id)
+        finally:
+            # Stamped on the way out, not on the way in: the second event sits on
+            # the lock for as long as play() takes to join the call, and against
+            # a start time a slow join would look like a genuine next-track end.
+            _last_advance[chat_id] = loop.time()
+
+
+async def call_gone_handler(call_py, update: ChatUpdate):
+    """The voice chat closed, or we were kicked or removed: forget the chat.
+
+    Without this, is_active_chat keeps claiming we are streaming and every later
+    command talks to a call that no longer exists.
+    """
+    client = call_py.mtproto_client
+    chat_id = update.chat_id
+    logger.info(f"[MUSIC] Call in {chat_id} ended externally ({update.status})")
+    await remove_active_chat(client, chat_id)
+    song_queue = queues.get(f"dic_{client.me.id}") or {}
+    leftovers = song_queue.pop(chat_id, [])
+    playing.pop(chat_id, None)
+    for song in leftovers:
+        _cleanup_song_file(song, [])
+
+
+# The filter each callback is registered with, kept next to the callbacks so
+# main.py does not have to know which updates the queue cares about.
+STREAM_END_FILTER = call_filters.stream_end()
+CALL_GONE_FILTER = call_filters.chat_update(
+    ChatUpdate.Status.CLOSED_VOICE_CHAT
+    | ChatUpdate.Status.KICKED
+    | ChatUpdate.Status.LEFT_GROUP
+)

@@ -133,6 +133,13 @@ last_response_time = {}
 used_words = {}
 active = {}
 songs_client = {}
+# Voice-call playback state, next to the call clients that consume it. The
+# runtime that reads and writes these lives in tools.py; main.py seeds the two
+# per-owner entries when it starts the call client.
+#   queues   {f"dic_{owner_id}": {chat_id: [song, ...]}}   what is waiting
+#   playing  {chat_id: song}                               what is on air
+queues = {}
+playing = {}
 IGNORE_DURATION = 5
 StartTime = time.time()
 

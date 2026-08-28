@@ -5,7 +5,18 @@ import sys
 
 from pyrogram import Client, idle
 from convopyro import Conversation
+from pytgcalls import PyTgCalls
 from config import *
+# The voice-call callbacks and their filters live in tools, not in the music
+# plugin: pyrogram loads everything under userbot/ itself, so importing a plugin
+# module here would load a second copy of it under a different name and split
+# its module-level state in two.
+from tools import (
+    CALL_GONE_FILTER,
+    STREAM_END_FILTER,
+    call_gone_handler,
+    stream_end_handler,
+)
 from plugin_loader import load_extra_plugins
 from userbot.game_solver import warm_solver
 
@@ -103,6 +114,33 @@ async def main():
         user_data = user_sessions.find_one({"user_id": userbot.me.id})
         if user_data and "sudoers" in user_data:
             SUDO[userbot.me.id] = user_data["sudoers"]
+
+        # Bring the voice-call client up here, alongside the pyrogram client it
+        # wraps, instead of on the first .play. PyTgCalls.start() checks the
+        # environment (ffmpeg, the ntgcalls native binding), installs its own
+        # mtproto update handler on this client and resolves our own peer -- work
+        # that has no business happening inside a command handler, where its
+        # latency lands on the user and a missing dependency shows up as a failed
+        # .play instead of a failed startup.
+        #
+        # config.songs_client is what the music commands read; nothing under
+        # userbot/ ever builds a call client. py-tgcalls invokes a handler as
+        # (call_py, update) and PyTgCalls exposes the pyrogram client it wraps as
+        # `mtproto_client`, so the callbacks need nothing bound in.
+        #
+        # Not fatal: everything except music works without it, so a failure here
+        # is a warning and the music commands say so when used.
+        try:
+            call_py = PyTgCalls(userbot)
+            call_py.add_handler(stream_end_handler, STREAM_END_FILTER)
+            call_py.add_handler(call_gone_handler, CALL_GONE_FILTER)
+            await call_py.start()
+            songs_client[userbot.me.id] = call_py
+            queues[f"dic_{userbot.me.id}"] = {}
+            active[userbot.me.id] = []
+            print("Voice call client started successfully!")
+        except Exception as e:
+            print(f"Voice call client failed to start (music commands will be unavailable): {e}")
 
         # Load external community plugins (no repo fork needed)
         loaded_extra_plugins.extend(load_extra_plugins(userbot, EXTRA_PLUGINS_DIR))

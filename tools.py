@@ -845,89 +845,152 @@ def crcustom_filter():
     return filters.create(filte_func)
 
 # File upload utilities
+_GOFILE_SERVERS_URL = "https://api.gofile.io/servers"
+
+
+def _gofile_pick_server():
+    """Ask gofile.io which upload server to use. Blocking -- call in a thread.
+
+    This used https://api.gofile.io/servers' predecessor, /getServer, which no
+    longer exists: it answers 404 with the JSON string "error-notFound", so
+    data["data"]["server"] raised TypeError and every oversized upload died
+    before a byte moved. /servers returns data.servers as a list of
+    {name, zone}; any of them will take the file.
+    """
+    response = requests.get(_GOFILE_SERVERS_URL, timeout=30)
+    response.raise_for_status()
+    payload = response.json()
+    servers = (payload.get("data") or {}).get("servers") or []
+    for entry in servers:
+        if isinstance(entry, dict) and entry.get("name"):
+            return entry["name"]
+    return None
+
+
 async def big_file(msg, sender, zip_filename):
-    import requests
-    edit = 0
-    url = "https://api.gofile.io/getServer"
-    # Blocks the event loop; bound it so an unresponsive gofile can't hang the
-    # whole userbot (see the note in download_file).
-    response = requests.get(url, timeout=30)
-    data = response.json()
-    server = data["data"]["server"]
+    """Hand a file too large for Telegram to gofile.io and report the link."""
+    try:
+        # In a thread: requests is synchronous, and this used to block the whole
+        # event loop on a third-party host.
+        server = await asyncio.to_thread(_gofile_pick_server)
+    except Exception as e:
+        logger.warning(f"gofile server lookup failed: {e}")
+        return await bot.edit_message(msg, f"Could not reach gofile.io: {html_esc(e)}")
 
     if not server:
         return await bot.edit_message(msg, "No storage available in gofile.io please try again later:")
 
-    file_size = os.path.getsize(zip_filename)
     logger.debug(f"gofile server: {server}")
-
     await bot.edit_message(msg, 'File size is greater than 2GB\nUploading file to gofile.io server...')
 
     transfer_url = f"https://{server}.gofile.io/uploadFile"
-    try:
-        command = ["curl", "-F", f"file=@{zip_filename}", transfer_url]
-        start_time = time.time()
-        logger.debug(f"upload command: {command}")
-        output = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, universal_newlines=True)
+    command = ["curl", "-F", f"file=@{zip_filename}", transfer_url]
+    logger.debug(f"upload command: {command}")
+    start_time = time.time()
 
-        for line in output.stdout:
-            type_of = "Uploading\nProgress:"
-            line = line.strip()
-            if line:
-                output_text = line
+    try:
+        # asyncio, not subprocess.Popen: the old code read the pipe with a
+        # blocking loop, so the entire userbot was frozen for the length of a
+        # multi-gigabyte upload, and it never called wait() or closed the pipe,
+        # leaving a defunct curl and a leaked descriptor behind every time.
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+    except OSError as e:
+        # The old handler caught subprocess.CalledProcessError, which Popen
+        # never raises, so a missing curl went out as an unhandled exception.
+        logger.error(f"gofile upload could not start: {e}")
+        return await bot.edit_message(msg, f"Upload failed to start: {html_esc(e)}")
+
+    display_name = html_esc(os.path.basename(zip_filename))
+    recent = []
+    edit = 0
+    buffer = b""
+    try:
+        while True:
+            chunk = await process.stdout.read(512)
+            if not chunk:
+                break
+            # curl separates progress updates with \r, not \n. The old code got
+            # away with readline() only because it opened the pipe in text mode,
+            # where universal newlines translate \r for you; asyncio streams
+            # split on \n alone, so do the translation here or lose every
+            # progress update.
+            buffer = (buffer + chunk).replace(b"\r", b"\n")
+            *complete, buffer = buffer.split(b"\n")
+            for raw in complete:
+                line = raw.decode("utf-8", "replace").strip()
+                if not line:
+                    continue
                 logger.debug(line)
+                recent.append(line)
+                # Bounded: a long upload emits thousands of progress lines, and
+                # only the tail holds the response we need.
+                del recent[:-20]
 
                 if edit % 5 == 0:
                     parts = line.split()
-
                     if len(parts) > 10:
-                        logger.debug(parts[1])
-                        total_size = parts[1]
-                        total = re.sub("[^0-9]", "", total_size)
-                        current_size = parts[5]
-                        current = re.sub("[^0-9]", "", current_size)
-
+                        total = re.sub("[^0-9]", "", parts[1])
+                        current = re.sub("[^0-9]", "", parts[5])
                         if total.isdigit() and current.isdigit():
                             total = int(total)
                             current = int(current)
-
                             if current != 0 and total != 0:
                                 progress_percent = current * 100 / total
-                                progress_message = f"Downloading {zip_filename}: {progress_percent:.2f}%\n\n"
+                                progress_message = f"Uploading {display_name}: {progress_percent:.2f}%\n\n"
 
                                 elapsed_time = time.time() - start_time
-                                speed = current / (elapsed_time * 10)
+                                speed = current / (elapsed_time * 10) if elapsed_time else 0
                                 progress_message += f"Speed: {speed:.2f} MB/s\n"
 
-                                time_left = (total - current) / (speed * 10)
-                                progress_message += f"Time left: {time_left:.2f} seconds"
-                                progress_message += f"Size: {current / (1):.2f} MB / {total / (1):.2f} MB"
+                                time_left = (total - current) / (speed * 10) if speed else 0
+                                progress_message += f"Time left: {time_left:.2f} seconds\n"
+                                progress_message += f"Size: {current:.2f} MB / {total:.2f} MB"
 
                                 progress_bar_length = int(progress_percent / 5)
                                 progress_bar_text = "█" * progress_bar_length + "░" * (20 - progress_bar_length)
                                 progress_message += f"\n[{progress_bar_text}]"
 
-                                message_text = f"{progress_message}"
-
                                 try:
                                     if random.choices([True, False], weights=[1, 99])[0]:
-                                        await bot.edit_message(msg, message_text, parse_mode='html')
+                                        await bot.edit_message(msg, progress_message, parse_mode='html')
                                 except Exception as e:
                                     logger.warning(f"progress edit failed: {e}")
 
                 edit += 1
+    finally:
+        # Always reap, even if the loop above raised or the task was cancelled.
+        if process.returncode is None:
+            with contextlib.suppress(ProcessLookupError):
+                process.kill()
+        returncode = await process.wait()
 
-        text = line
-        start_index = text.find("https://gofile.io")
-        end_index = text.find('"', start_index)
-        link = text[start_index:end_index]
+    tail = buffer.decode("utf-8", "replace").strip()
+    if tail:
+        recent.append(tail)
+    combined = "\n".join(recent)
 
-        try:
-            await bot.send_message(sender, f"Not able to upload files more than 500MB here.\nDownload link: {link}")
-        except Exception as e:
-            logger.warning(f"Error sending link: {link}, Error: {e}")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"gofile upload failed: {e}")
+    start_index = combined.find("https://gofile.io")
+    if start_index == -1:
+        # No link in the output: curl failed, or gofile changed the upload
+        # endpoint under us. Either way, say so instead of sending a message
+        # with a mangled slice of an error page in it.
+        logger.error(f"gofile upload produced no link (curl exit {returncode}): {combined[-500:]}")
+        return await bot.edit_message(
+            msg, f"Upload to gofile.io failed (curl exit {returncode})."
+        )
+
+    end_index = combined.find('"', start_index)
+    link = combined[start_index:end_index] if end_index != -1 else combined[start_index:].split()[0]
+
+    try:
+        await bot.send_message(sender, f"Not able to upload files more than 500MB here.\nDownload link: {link}")
+    except Exception as e:
+        logger.warning(f"Error sending link: {link}, Error: {e}")
+    return link
 
 
 def get_arg(message: Message):

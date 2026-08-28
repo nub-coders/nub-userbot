@@ -216,7 +216,13 @@ async def mentionall(client, message):
                 break
                 
             usrnum += 1
-            usrtxt += f"[{usr.user.first_name}](tg://user?id={usr.user.id}), "
+            # An HTML anchor with the name escaped, not a markdown link: a member
+            # whose display name contained "](https://elsewhere)" used to rewrite
+            # the mention's target, and a deleted account with no first_name
+            # tagged as the literal "None". The owner's own text in `args` is
+            # still free to use markdown -- the default parse mode reads both.
+            display = html_esc(usr.user.first_name or "user")
+            usrtxt += f'<a href="tg://user?id={usr.user.id}">{display}</a>, '
             
             if usrnum == 1:
                 if args:

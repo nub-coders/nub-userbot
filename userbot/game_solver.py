@@ -3,13 +3,34 @@ WordSeek Game Solver - Auto-player for WordSeek Telegram bot
 Analyzes game feedback and provides optimal word guesses
 """
 
+import asyncio
 import json
 import os
 import logging
+import threading
 from collections import Counter
 from typing import Set, List, Dict, Tuple
 
 logger = logging.getLogger("game_solver")
+
+# Word lists were looked up relative to the process CWD only, so the solver
+# silently loaded nothing whenever the bot was started from anywhere other than
+# the repo root (a systemd unit with a different WorkingDirectory, for example).
+# Anchor to the repo root, which is the parent of this file's directory.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _candidate_paths(filename: str) -> List[str]:
+    """Every place a word list may live, CWD-relative first for overrides."""
+    return [
+        filename,
+        os.path.join('data', filename),
+        os.path.join('userbot', 'data', filename),
+        os.path.join(_REPO_ROOT, filename),
+        os.path.join(_REPO_ROOT, 'data', filename),
+        os.path.join(_REPO_ROOT, 'userbot', 'data', filename),
+        os.path.expanduser(f'~/{filename}'),
+    ]
 
 
 class WordSolver:
@@ -32,14 +53,8 @@ class WordSolver:
         Returns dict: {length: set(words)}
         """
         words_by_len = {}
-        
-        # Try multiple paths
-        paths = [
-            f'{filename}',
-            f'data/{filename}',
-            f'userbot/data/{filename}',
-            os.path.expanduser(f'~/{filename}'),
-        ]
+
+        paths = _candidate_paths(filename)
         
         for path in paths:
             if os.path.exists(path):
@@ -69,18 +84,20 @@ class WordSolver:
                     continue
         
         # ponytail: no hardcoded fallback — trust the JSON word files
-        logger.warning("No word file found; returning empty set")
+        # Loud, and it names the paths: with no words the auto-player cannot
+        # produce a single guess, and it used to fail with nothing but this line
+        # in the log.
+        logger.error(
+            f"No word file found for {filename}; the WordSeek auto-player will "
+            f"not be able to guess. Looked in: {', '.join(paths)}"
+        )
         return {}
 
     def _load_common_words(self, filename: str) -> Set[str]:
         """Load common words as a set for fast lookup.
         Handles both list and dict JSON formats.
         """
-        paths = [
-            f'{filename}',
-            f'data/{filename}',
-            f'userbot/data/{filename}',
-        ]
+        paths = _candidate_paths(filename)
 
         for path in paths:
             if os.path.exists(path):
@@ -308,11 +325,40 @@ class WordSolver:
 
 # Global solver instance
 _solver = None
+_solver_lock = threading.Lock()
 
 
 def get_solver() -> WordSolver:
-    """Get or create solver instance"""
+    """Get or create the solver instance.
+
+    Building it reads and indexes the whole word list, roughly a third of a
+    second of pure CPU, so this is deliberately called from a worker thread
+    (see warm_solver below and the asyncio.to_thread call sites). The lock keeps
+    two threads from each paying that cost and racing on the global.
+    """
     global _solver
     if _solver is None:
-        _solver = WordSolver()
+        with _solver_lock:
+            if _solver is None:
+                _solver = WordSolver()
     return _solver
+
+
+def solver_is_ready() -> bool:
+    """True when the solver exists and actually has words to guess from."""
+    return _solver is not None and bool(_solver.all_words_by_length)
+
+
+async def warm_solver() -> None:
+    """Build the solver off the event loop, at startup.
+
+    Without this the first outgoing group message paid for the build inside a
+    message handler, blocking every other handler in the process while it ran.
+    """
+    if _solver is not None:
+        return
+    try:
+        await asyncio.to_thread(get_solver)
+        logger.info("WordSeek solver warmed up")
+    except Exception as exc:
+        logger.warning(f"Could not warm up the WordSeek solver: {exc}")

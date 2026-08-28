@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import asyncio
 import cv2
 import numpy as np
 import pytesseract
@@ -9,12 +10,18 @@ from collections import Counter
 from functools import lru_cache
 from pyrogram import Client, filters
 from pyrogram.types import Message
-from tools import HARDCODED_PREFIXES, cmd_text
+from tools import HARDCODED_PREFIXES, cmd_text, styled_error
 from utils.message import Msg
 import ai_backend
 
-logging.basicConfig(level=logging.INFO)
+# No logging.basicConfig here: this module is imported as a plugin, and calling
+# it reconfigured the root logger for the whole process, overriding the format
+# main.py sets up.
 logger = logging.getLogger(__name__)
+
+# Word lists are looked up relative to the repo root rather than the process
+# CWD, so they are still found when the bot is started from another directory.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ── 8 search directions: (row_delta, col_delta, label) ──
 DIRECTIONS = [
@@ -43,11 +50,15 @@ def load_valid_words() -> frozenset:
     Uses words.txt (all lengths) as the primary source since
     allWords.json only contains 5-letter Wordle words.
     Both sources are merged for maximum coverage.
+
+    Reads ~9.5MB / 880k lines, about 4.5 seconds of blocking work, so every
+    caller runs it through asyncio.to_thread. lru_cache means only the first
+    call pays.
     """
     words = set()
 
     # Primary: words.txt — contains 880K+ words of ALL lengths
-    txt_path = os.path.join(os.getcwd(), "words.txt")
+    txt_path = os.path.join(_REPO_ROOT, "words.txt")
     if os.path.exists(txt_path):
         try:
             with open(txt_path, "r", encoding="utf-8") as f:
@@ -62,7 +73,7 @@ def load_valid_words() -> frozenset:
     # Secondary: allWords.json — merge in for completeness
     json_paths = ["allWords.json", "data/allWords.json"]
     for p in json_paths:
-        full = os.path.join(os.getcwd(), p)
+        full = os.path.join(_REPO_ROOT, p)
         if os.path.exists(full):
             try:
                 with open(full, "r", encoding="utf-8") as f:
@@ -417,6 +428,20 @@ def _extract_grid_tesseract(image_path: str) -> list:
 
         rows.append(row_str)
 
+    # Every OCR failure path in _ocr_cell returns ".", and a grid made of
+    # nothing but dots is still a truthy list -- so a total OCR failure used to
+    # be reported as "10x10 grid extracted" followed by a grid of dots, instead
+    # of taking the caller's "couldn't extract the grid" branch. Treat a
+    # mostly-unreadable grid as no grid at all.
+    total_cells = sum(len(r) for r in rows)
+    unreadable = sum(r.count(".") for r in rows)
+    if total_cells == 0 or unreadable / total_cells > 0.4:
+        logger.warning(
+            f"[GRID] Tesseract could not read {unreadable}/{total_cells} cells; "
+            f"treating the extraction as failed"
+        )
+        return []
+
     logger.info(
         f"[GRID] Tesseract extracted {len(rows)} rows x "
         f"{len(rows[0]) if rows else 0} cols"
@@ -591,9 +616,17 @@ async def solve_wordgrid(client: Client, message: Message):
         return
 
     m = await message.reply(f"{Msg.EMOJI_DOWNLOAD} Downloading photo…")
-    photo_path = await target_msg.download()
+    photo_path = None
 
     try:
+        # Inside the try: download() returns None when the file cannot be
+        # fetched, and the finally below used to hand that None straight to
+        # os.path.exists() and raise TypeError over the real error.
+        photo_path = await target_msg.download()
+        if not photo_path:
+            await m.edit(f"{Msg.EMOJI_ERROR} Could not download that photo.")
+            return
+
         caption = target_msg.caption or target_msg.text or ""
         clues = parse_clues(caption)
         await m.edit(
@@ -601,7 +634,11 @@ async def solve_wordgrid(client: Client, message: Message):
             f"Extracting grid (AI Vision → Tesseract fallback)…"
         )
 
-        raw_rows = extract_grid_from_image(photo_path)
+        # In a thread: the vision path is a blocking requests.post with retries
+        # and up to a 180s timeout, and the Tesseract fallback spawns several
+        # subprocesses per cell. Run inline, either one froze every other
+        # handler in the process for the whole extraction.
+        raw_rows = await asyncio.to_thread(extract_grid_from_image, photo_path)
         if not raw_rows:
             await m.edit(
                 "❌ OCR couldn't extract the grid.\n"
@@ -622,7 +659,8 @@ async def solve_wordgrid(client: Client, message: Message):
             f"{Msg.EMOJI_SUCCESS} **{nrows}×{ncols}** grid extracted. Solving…"
         )
 
-        valid_words = load_valid_words()
+        # In a thread: words.txt is 9.5MB / 880k lines, measured at 4.5s.
+        valid_words = await asyncio.to_thread(load_valid_words)
         results_3d = search_grid_3d(grid_2d, clues, valid_words)
 
         cap_up = caption.upper()
@@ -638,9 +676,9 @@ async def solve_wordgrid(client: Client, message: Message):
 
     except Exception as e:
         logger.error(f"Error processing WordGrid: {e}")
-        await m.edit(f"{Msg.EMOJI_ERROR} Error: {ai_backend.scrub(str(e))}")
+        await m.edit(styled_error("Could not solve that grid", details=ai_backend.scrub(str(e))))
     finally:
-        if os.path.exists(photo_path):
+        if photo_path and os.path.exists(photo_path):
             os.remove(photo_path)
 
 
@@ -705,7 +743,7 @@ async def manual_grid(client: Client, message: Message):
             f"Searching with **{len(clues)}** clues…"
         )
 
-        valid_words = load_valid_words()
+        valid_words = await asyncio.to_thread(load_valid_words)
         results_3d = search_grid_3d(grid_2d, clues, valid_words)
         title = f"{Msg.EMOJI_PUZZLE} Word Grid — 3D Grid Solver (Manual)"
         response = format_3d_results(grid_2d, results_3d, title)
@@ -713,4 +751,4 @@ async def manual_grid(client: Client, message: Message):
 
     except Exception as e:
         logger.error(f"Error processing manual grid: {e}")
-        await m.edit(f"{Msg.EMOJI_ERROR} Error: {e}")
+        await m.edit(styled_error("Could not solve that grid", details=ai_backend.scrub(str(e))))

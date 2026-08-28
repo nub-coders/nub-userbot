@@ -7,6 +7,10 @@ from pyrogram import Client, idle
 from convopyro import Conversation
 from config import *
 from plugin_loader import load_extra_plugins
+from userbot.game_solver import warm_solver
+
+# Strong references to fire-and-forget tasks; asyncio only holds weak ones.
+background_tasks = set()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -104,6 +108,15 @@ async def main():
         loaded_extra_plugins.extend(load_extra_plugins(userbot, EXTRA_PLUGINS_DIR))
         if loaded_extra_plugins:
             print(f"Loaded {len(loaded_extra_plugins)} extra plugin(s): {', '.join(loaded_extra_plugins)}")
+
+        # Build the WordSeek solver in a worker thread now, so no message
+        # handler has to. It indexes the whole word list (~0.3s of CPU), and it
+        # used to be built lazily inside auto_play_handler -- which runs for
+        # every outgoing group message -- stalling the event loop there.
+        # Referenced so the task is not garbage collected mid-flight.
+        warmup_task = asyncio.create_task(warm_solver())
+        background_tasks.add(warmup_task)
+        warmup_task.add_done_callback(background_tasks.discard)
 
     except Exception as e:
         # Reached only for the bookkeeping after a successful start (sudo list,

@@ -9,7 +9,7 @@ import logging
 from typing import Dict, Optional, List
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message
-from userbot.game_solver import get_solver
+from userbot.game_solver import get_solver, solver_is_ready
 from tools import *
 import wordseek_config as ws_config
 # Setup logging
@@ -427,7 +427,10 @@ async def auto_play_handler(client: Client, message: Message):
     is_trigger_word = text in TRIGGER_WORDS
     
     # 2. Any valid length guess word in a private bot chat
-    supported_lens = get_supported_lengths()
+    # In a thread: the very first call builds the solver (~0.3s of CPU spent
+    # indexing the word list), and this handler runs for every outgoing group
+    # message. main.py warms it at startup, so this is normally already cheap.
+    supported_lens = await asyncio.to_thread(get_supported_lengths)
     is_valid_len_word = len(text) in supported_lens and text.isalpha()
     is_private_bot = message.chat.type == enums.ChatType.PRIVATE and (message.chat.username or '').lower() in ['wordseekbot', 'crocodilegameenn_bot']
     
@@ -447,6 +450,19 @@ async def auto_play_handler(client: Client, message: Message):
     
     if should_start:
         trigger_length = len(text)
+        # Say so instead of dying quietly: with no word list the loop below
+        # cannot produce a single candidate, and it used to just stop, leaving
+        # the owner staring at a game the userbot had silently abandoned.
+        if not solver_is_ready():
+            await asyncio.to_thread(get_solver)
+            if not solver_is_ready():
+                logger.error("[AUTO-GAME] Solver has no word list; not starting")
+                await client.send_message(
+                    chat_id,
+                    "Auto-play is unavailable: the word list could not be loaded. "
+                    "Check that data/allWords.json exists.",
+                )
+                return
         logger.info(f"[AUTO-GAME] Starting auto-play with word '{text}' ({trigger_length} letters)")
         ACTIVE_GAMES[chat_id] = init_game_state(chat_id, word_length=trigger_length)
         game = ACTIVE_GAMES[chat_id]

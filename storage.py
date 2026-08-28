@@ -23,30 +23,63 @@ class _Result:
         self.inserted_id = inserted_id
 
 
+def _resolve(doc, field, create=False):
+    """Walk a dotted field path, returning the owning dict and the final key.
+
+    Mongo reads ``a.b`` as a path into a nested document and every operator below
+    accepts one. This used the dotted string as a literal key instead, so
+    ``{"$inc": {f"users.{uid}": 1}}`` (userbot/antyspam.py) created a top-level
+    ``"users.<uid>"`` entry that the matching read -- ``doc.get("users", {}).get(uid)``
+    -- could never see. The per-sender antispam counters therefore read 0 forever
+    on the memory and sqlite backends, so the auto-delete and auto-block
+    thresholds never fired and the reset commands had nothing to reset, while the
+    same code worked on mongo. Returns ``(None, key)`` when the path does not
+    exist and ``create`` is false, so read-only operators can bail out.
+    """
+    parts = field.split(".")
+    for part in parts[:-1]:
+        child = doc.get(part)
+        if not isinstance(child, dict):
+            if not create:
+                return None, parts[-1]
+            child = {}
+            doc[part] = child
+        doc = child
+    return doc, parts[-1]
+
+
 def _apply_update(doc, update):
     """Apply Mongo-style update operators to ``doc`` in place."""
     for op, fields in update.items():
         if op == "$set":
-            doc.update(fields)
+            for f, v in fields.items():
+                owner, key = _resolve(doc, f, create=True)
+                owner[key] = v
         elif op == "$unset":
             for f in fields:
-                doc.pop(f, None)
+                owner, key = _resolve(doc, f)
+                if owner is not None:
+                    owner.pop(key, None)
         elif op == "$push":
             for f, v in fields.items():
-                doc.setdefault(f, []).append(v)
+                owner, key = _resolve(doc, f, create=True)
+                owner.setdefault(key, []).append(v)
         elif op == "$pull":
             for f, v in fields.items():
-                lst = doc.get(f, [])
+                owner, key = _resolve(doc, f)
+                lst = owner.get(key, []) if owner is not None else []
                 if v in lst:
                     lst.remove(v)
         elif op == "$addToSet":
             for f, v in fields.items():
-                lst = doc.setdefault(f, [])
+                owner, key = _resolve(doc, f, create=True)
+                lst = owner.setdefault(key, [])
                 if v not in lst:
                     lst.append(v)
         elif op == "$inc":
             for f, v in fields.items():
-                doc[f] = doc.get(f, 0) + v
+                owner, key = _resolve(doc, f, create=True)
+                owner[key] = owner.get(key, 0) + v
 
 
 class MemoryCollection:

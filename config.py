@@ -43,6 +43,15 @@ AGENT_COMPACT_THRESHOLD = int(os.getenv('AGENT_COMPACT_THRESHOLD', '14'))
 # owner to run commands directly.
 AGENT_ALLOW_SHELL = os.getenv('AGENT_ALLOW_SHELL', 'false').lower() in ('true', '1', 'yes')
 
+# Filesystem sandbox for the agent's read-only file tools (read_file, list_dir,
+# search_files). Unlike the shell, those tools are offered on every `.ask` run,
+# so this root -- not AGENT_ALLOW_SHELL -- is what stands between an injected
+# prompt and the host filesystem. Defaults to the project directory. Widening it
+# to '/' hands the model every file the process can read, including this one.
+# Secret-bearing files (.env, *.session, the SQLite DB) are refused even inside
+# the root; see ai_backend._is_denied.
+AGENT_FILE_ROOT = os.getenv('AGENT_FILE_ROOT', os.getcwd())
+
 # Moderation (ban/kick/mute/promote, deleting and pinning messages) for the
 # agent. Off by default for the same reason as AGENT_ALLOW_SHELL: `.ask` embeds
 # other people's message text into the prompt, so an armed moderation tool turns

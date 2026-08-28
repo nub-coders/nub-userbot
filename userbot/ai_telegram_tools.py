@@ -785,75 +785,125 @@ def _norm(text):
     return "".join(ch for ch in decomposed if ch.isalnum())
 
 
-def _matches(key, user, tokens=()):
+def _spans(words):
+    """Every run of consecutive words in a query, normalized and joined.
+
+    `_norm` throws the spaces away, so the whole-query key has no word boundaries
+    left to anchor anything against. These put them back: "hey alice smith please"
+    yields "alice", "alicesmith", "smithplease", and so on.
+    """
+    parts = [p for p in (_norm(word) for word in words) if p]
+    return {
+        "".join(parts[i:j])
+        for i in range(len(parts))
+        for j in range(i + 1, len(parts) + 1)
+    }
+
+
+def _terms(query):
+    """The keys a query is compared by: whole query, its words, and word runs."""
+    words = query.split()
+    tokens = [t for t in (_norm(word) for word in words) if len(t) >= 2]
+    if len(tokens) < 2:
+        tokens = []  # a single word is already covered by the whole-query key
+    return {"key": _norm(query), "tokens": tokens, "spans": _spans(words)}
+
+
+def _matches(terms, user):
     """Whether a query identifies this user by name or handle.
 
-    `key` is the whole query normalized. `tokens` are its words normalized one by
-    one, which is what catches decoration sitting *between* the words of a name:
-    "- EGⓄISTIC ㄒ - Ãriëß dono" keeps that lone ㄒ as a letter, so the one-piece
-    key never matches somebody typing "egoistic ariess dono".
+    ``tokens`` are the query's words normalized one by one, which is what catches
+    decoration sitting *between* the words of a name: "- EG⒪ISTIC ㄢ - Ãriëß dono"
+    keeps that lone ㄢ as a letter, so the one-piece key never matches somebody
+    typing "egoistic ariess dono".
     """
+    key, tokens, spans = terms["key"], terms["tokens"], terms["spans"]
     for candidate in (
         _norm(" ".join(p for p in (user.first_name, user.last_name) if p)),
         _norm(user.username or ""),
     ):
         if not candidate:
             continue
-        # Both directions: the query may be a fragment of a longer display name,
-        # or the whole decorated line somebody copied may contain the real name.
-        if key in candidate or candidate in key:
+        # The query may be a fragment of a longer display name.
+        if key in candidate:
+            return True
+        # The other direction -- the member's name sitting inside a longer line the
+        # operator pasted -- has to line up with words that were actually typed. A
+        # bare `candidate in key` matched any short name that happened to fall
+        # inside the query, so a member called "Al" answered a search for "alice"
+        # and `.ask ban alice` banned the wrong person.
+        if candidate in spans:
             return True
         if tokens and all(token in candidate for token in tokens):
             return True
     return False
 
 
-async def _scan_members(client, chat_id, key, tokens, query, limit):
+async def _scan_members(client, chat_id, terms, query, limit):
     """One pass over a chat's members. Returns (matches, members seen)."""
     matches, seen = [], 0
     async for member in client.get_chat_members(chat_id, query=query, limit=limit):
         seen += 1
         user = getattr(member, "user", None)
-        if user is not None and _matches(key, user, tokens):
+        if user is not None and _matches(terms, user):
             matches.append(member)
             if len(matches) >= _MAX_MATCHES:
                 break
     return matches, seen
 
 
+def _merge_matches(first, second):
+    """Both result sets, one entry per account, capped at `_MAX_MATCHES`."""
+    merged, seen_ids = [], set()
+    for member in (*first, *second):
+        user = getattr(member, "user", None)
+        user_id = getattr(user, "id", None)
+        if user_id in seen_ids:
+            continue
+        seen_ids.add(user_id)
+        merged.append(member)
+        if len(merged) >= _MAX_MATCHES:
+            break
+    return merged
+
+
 async def _search_members(client, chat, query):
     """Members of `chat` whose name or handle matches `query`.
 
-    Returns `(matches, truncated)`. The bounded scan goes first and runs to the
-    end of its window: two members whose names normalize the same way is exactly
-    what impersonation looks like, so the caller has to be able to see both rather
-    than get whichever one Telegram happened to return. Telegram's own search is
-    the fallback, since prefix matching is all it does but it can reach past the
-    window in a chat with more members than the scan covers.
+    Returns ``(matches, truncated)``, where `truncated` means the chat is bigger
+    than the scan window and so the match list is not provably the whole of it.
+    The bounded scan goes first and runs to the end of its window: two members
+    whose names normalize the same way is exactly what impersonation looks like, so
+    the caller has to be able to see both rather than get whichever one Telegram
+    happened to return.
+
+    When the window does close early, Telegram's own search runs as well and its
+    results are merged in -- it only matches name prefixes, but it reaches past the
+    window, so a second person with this name is not invisible merely because they
+    joined late. That matters because the callers treat a lone match as the
+    unambiguous answer.
     """
-    key = _norm(query)
-    if len(key) < 2:
+    terms = _terms(query)
+    if len(terms["key"]) < 2:
         return [], False
-    tokens = [t for t in (_norm(word) for word in query.split()) if len(t) >= 2]
-    if len(tokens) < 2:
-        tokens = []  # a single word is already covered by the whole-query key
 
     matches, truncated = [], True
     try:
-        matches, seen = await _scan_members(client, chat.id, key, tokens, "", _MAX_SCAN)
+        matches, seen = await _scan_members(client, chat.id, terms, "", _MAX_SCAN)
         truncated = seen >= _MAX_SCAN
     except Exception as e:
         # Expected when the userbot may not enumerate members.
         logger.debug("member scan failed: %s", e)
 
-    if matches or not truncated:
+    if not truncated:
         return matches, False
 
     try:
-        matches, _ = await _scan_members(client, chat.id, key, tokens, query, _MAX_SCAN)
+        extra, _ = await _scan_members(client, chat.id, terms, query, _MAX_SCAN)
+        matches = _merge_matches(matches, extra)
     except Exception as e:
         logger.debug("member search for %r failed: %s", query, e)
-    return matches, not matches
+    return matches, True
 
 
 async def _standing(client, chat, user):
@@ -885,13 +935,20 @@ async def _find_user(client, message, tool_input):
         return "[this is a private chat -- it has no member list to search]"
 
     matches, truncated = await _search_members(client, chat, query)
+    note = (
+        f" (only the first {_MAX_SCAN} members could be listed, plus whatever "
+        "Telegram's own name search returned)" if truncated else ""
+    )
     if not matches:
-        note = f" (only the first {_MAX_SCAN} members were checked)" if truncated else ""
         return f"[no member of this chat matches {query!r}{note}]"
 
     header = f"{len(matches)} matches" if len(matches) > 1 else "1 match"
     if len(matches) > 1:
         header += " -- ambiguous, so ask which one is meant before acting on any of them"
+    elif truncated:
+        # Saying "1 match" unqualified in a chat too big to walk would be a claim
+        # the search cannot support, and it is the claim the moderation tools act on.
+        header += f" so far{note}; ask for a @handle or ID before acting on it"
     return header + ":\n" + "\n".join(
         _describe_target(m.user, _status_of(m)) for m in matches
     )
@@ -1052,7 +1109,7 @@ async def _resolve_target(client, message, spec):
     if message.chat.type == ChatType.PRIVATE:
         return None, "a private chat has no member list to search that name in"
 
-    matches, _ = await _search_members(client, message.chat, spec)
+    matches, truncated = await _search_members(client, message.chat, spec)
     if not matches:
         return None, f"no member of this chat matches {spec!r}"
     if len(matches) > 1:
@@ -1060,6 +1117,14 @@ async def _resolve_target(client, message, spec):
         return None, (
             f"{spec!r} matches {len(matches)} members ({listed}) -- ask the operator "
             "which one rather than guessing"
+        )
+    if truncated:
+        # The chat is bigger than the scan window, so this is the only match we
+        # could see rather than provably the only one. Logged because this is the
+        # path where a lookalike gets acted on instead of the person meant.
+        logger.warning(
+            "[ask-moderation] %r resolved to %s(%s) from a partial member scan",
+            spec, _describe_user(matches[0].user), matches[0].user.id,
         )
     return matches[0].user, None
 

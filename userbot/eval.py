@@ -135,9 +135,9 @@ async def __async_exec_function():
 
 async def handle_long_message(client, original_msg, code, output, is_error=False):
     """Output too long for a Telegram message — upload it as a text file."""
+    file_name = f"eval_{'error' if is_error else 'output'}_{int(time.time())}.txt"
     try:
         # Create a temporary file
-        file_name = f"eval_{'error' if is_error else 'output'}_{int(time.time())}.txt"
         with open(file_name, "w", encoding="utf-8") as file:
             file.write(f"Eval Expression:\n{code}\n\n")
             file.write(f"{'Error' if is_error else 'Result'}:\n{output}")
@@ -158,11 +158,21 @@ async def handle_long_message(client, original_msg, code, output, is_error=False
         
         # Clean up
         os.remove(file_name)
-        
+
     except Exception as file_error:
-        # Last resort if everything fails
+        # Last resort if everything fails. The exception is escaped: this text
+        # is sent as HTML, and a failure mentioning a tag-shaped name would
+        # otherwise have that part silently deleted.
         await client.edit_message_text(
             chat_id=original_msg.chat.id,
             message_id=original_msg.id,
-            text=f"<b>Eval Expression:</b>\n<pre>{html.escape(code[:500])}{'...' if len(code) > 500 else ''}</pre>\n<b>Output too large to display and file upload failed:</b> {str(file_error)}"
+            text=f"<b>Eval Expression:</b>\n<pre>{html.escape(code[:500])}{'...' if len(code) > 500 else ''}</pre>\n<b>Output too large to display and file upload failed:</b> <code>{html.escape(str(file_error))}</code>"
         )
+    finally:
+        # The old cleanup only ran on the happy path, so a failed upload left
+        # the dump file sitting in the working directory.
+        if os.path.exists(file_name):
+            try:
+                os.remove(file_name)
+            except OSError:
+                pass

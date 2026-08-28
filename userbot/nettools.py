@@ -1,9 +1,12 @@
 import ast
 import asyncio
+import ipaddress
 import math
 import re
+import socket
 import time
 import logging
+from urllib.parse import urlparse
 import aiohttp
 import speedtest
 from pyrogram import Client, filters
@@ -14,6 +17,45 @@ from tools import (
 )
 
 logger = logging.getLogger("userbot")
+
+
+def _is_owner(message: Message) -> bool:
+    """True when the account itself sent this, rather than a sudo user."""
+    return bool(message.from_user and message.from_user.is_self)
+
+
+async def _reject_internal_target(host: str):
+    """Return a refusal string if `host` resolves anywhere off-limits, else None.
+
+    .tcp and .pingurl reach out from the machine the userbot runs on, and both
+    are open to sudo users. Unrestricted, that is a port scanner and a blind
+    SSRF pointed at whatever the host can see but the internet cannot:
+    127.0.0.1, the Docker bridge, a cloud instance-metadata endpoint. The owner
+    is trusted with their own network; a sudo user is not, so they are held to
+    public addresses.
+
+    Every resolved address is checked, not just the first, so a hostname that
+    answers with a loopback address is caught too.
+    """
+    if not host:
+        return "No host to connect to."
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(
+            host, None, proto=socket.IPPROTO_TCP
+        )
+    except socket.gaierror as e:
+        return f"Could not resolve {host}: {e}"
+    for info in infos:
+        try:
+            address = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if not address.is_global or address.is_loopback or address.is_private:
+            return (
+                f"{host} resolves to {address}, which is not a public address. "
+                "Only the account owner may probe internal hosts."
+            )
+    return None
 
 # Percentage notation handling for the calculator.
 _PERCENT_OF_RE = re.compile(r'(\d+(?:\.\d+)?)\%\s*(?:of\s+)?(?=[\d(])')
@@ -130,6 +172,10 @@ def _expand_percentages(expression: str) -> str:
 async def http_ping(client: Client, message: Message):
     args = message.text.split(maxsplit=1)
     url = args[1] if len(args) > 1 else "https://google.com"
+    if not _is_owner(message):
+        refusal = await _reject_internal_target(urlparse(url).hostname)
+        if refusal:
+            return await edit_or_reply(message, styled_error("Refused", details=refusal))
     msg = await edit_or_reply(message, f"🏓 <b>Testing HTTP latency to {url}...</b>")
     try:
         async with aiohttp.ClientSession() as session:
@@ -156,7 +202,25 @@ async def tcp_test(client: Client, message: Message):
     if len(args) < 3:
         await edit_or_reply(message, styled_error("Invalid format", hint=f"Usage: <code>{HARDCODED_PREFIXES[0]}tcp &lt;host&gt; &lt;port&gt;</code>"))
         return
-    host, port = args[1], int(args[2])
+    host = args[1]
+    # Parsed and range-checked here rather than inside the try below, where it
+    # used to sit outside it: ".tcp example.com http" raised an unhandled
+    # ValueError out of the handler instead of saying what was wrong.
+    try:
+        port = int(args[2])
+    except ValueError:
+        await edit_or_reply(message, styled_error(
+            f"{args[2]!r} is not a port number",
+            hint=f"Usage: <code>{HARDCODED_PREFIXES[0]}tcp &lt;host&gt; &lt;port&gt;</code>",
+        ))
+        return
+    if not 1 <= port <= 65535:
+        await edit_or_reply(message, styled_error(f"Port {port} is out of range", hint="Ports run from 1 to 65535."))
+        return
+    if not _is_owner(message):
+        refusal = await _reject_internal_target(host)
+        if refusal:
+            return await edit_or_reply(message, styled_error("Refused", details=refusal))
     msg = await edit_or_reply(message, f"🔌 <b>Testing TCP connection to {host}:{port}...</b>")
     try:
         reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=5)
@@ -204,6 +268,69 @@ async def async_speedtest(client: Client, message: Message):
 
 
 
+# Calculator limits. The AST whitelist below decides what the calculator may
+# *do*; these decide how much work it may do. Only two constructs in the allowed
+# set can run unbounded -- "**" and factorial() -- and both are C loops that hold
+# the GIL, so "2 ** 10**9" or "factorial(10**9)" freezes the entire userbot until
+# it finishes or the machine runs out of memory. A thread would not help for the
+# same reason. Everything else in the namespace is O(1) float arithmetic, and
+# there is no way to build a list or a range, so bounding these two bounds the
+# command.
+_CALC_MAX_EXPRESSION = 1000     # characters
+_CALC_MAX_POW_DIGITS = 5000     # ~5000-digit results compute instantly
+_CALC_MAX_FACTORIAL = 5000      # 5000! is about 16k digits
+
+
+class _CalcLimit(ValueError):
+    """Raised when an expression asks for more work than the calculator allows."""
+
+
+def _guarded_pow(base, exponent, modulus=None):
+    """base ** exponent, refusing results too large to compute cheaply."""
+    if modulus is not None:
+        return pow(base, exponent, modulus)
+    digits = None
+    try:
+        magnitude = abs(base)
+        if magnitude > 1 and exponent > 0:
+            digits = float(exponent) * math.log10(float(magnitude))
+    except (TypeError, ValueError, OverflowError):
+        # Not something whose size can be estimated -- a complex result, say.
+        # Leave the decision to Python.
+        digits = None
+    if digits is not None and digits > _CALC_MAX_POW_DIGITS:
+        raise _CalcLimit(
+            f"result would have about {digits:.0f} digits; "
+            f"the limit is {_CALC_MAX_POW_DIGITS}"
+        )
+    return base ** exponent
+
+
+def _guarded_factorial(n):
+    """math.factorial, refusing arguments that would take a visible age."""
+    if isinstance(n, (int, float)) and n > _CALC_MAX_FACTORIAL:
+        raise _CalcLimit(f"factorial argument above {_CALC_MAX_FACTORIAL} is not allowed")
+    return math.factorial(n)
+
+
+class _GuardPowers(ast.NodeTransformer):
+    """Rewrite `a ** b` as a call to the size-checked helper.
+
+    Run after validation, so the injected name cannot be reached by anyone
+    typing it themselves -- at validation time it is not in the namespace.
+    """
+
+    def visit_BinOp(self, node):
+        self.generic_visit(node)
+        if isinstance(node.op, ast.Pow):
+            return ast.Call(
+                func=ast.Name(id="_calc_pow", ctx=ast.Load()),
+                args=[node.left, node.right],
+                keywords=[],
+            )
+        return node
+
+
 # Calculator command
 @Client.on_message(filters.command(["calc", "calculate"], prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 async def calculator(client: Client, message: Message):
@@ -241,6 +368,13 @@ async def calculator(client: Client, message: Message):
         # Join all arguments to form the expression
         expression = " ".join(args)
         original_expression = expression
+
+        if len(expression) > _CALC_MAX_EXPRESSION:
+            return await edit_or_reply(
+                message,
+                f"❌ **Expression too long**\n\n"
+                f"⚠️ {len(expression)} characters; the limit is {_CALC_MAX_EXPRESSION}"
+            )
         
         # Create a safe namespace with allowed functions and constants
         safe_namespace = {
@@ -271,9 +405,13 @@ async def calculator(client: Client, message: Message):
             'tau': math.tau,
             'degrees': math.degrees,
             'radians': math.radians,
-            'factorial': math.factorial,
+            'factorial': _guarded_factorial,
             'gcd': math.gcd,
         }
+        # pow() and factorial() are the size-checked versions; see the limits
+        # above. Registered under their ordinary names so the whitelist check
+        # below, and the help text, stay as they were.
+        safe_namespace['pow'] = _guarded_pow
         
         # Replace common notation
         expression = expression.replace('^', '**')
@@ -323,8 +461,15 @@ async def calculator(client: Client, message: Message):
                         f"💡 Use `{HARDCODED_PREFIXES[0]}calc` for available functions"
                     )
 
-        # Evaluate the expression
-        result = eval(compile(parsed, '<string>', 'eval'), {"__builtins__": {}}, safe_namespace)
+        # Evaluate the expression. The "**" operator is rewritten into a
+        # size-checked call only now, after validation, so that nobody can reach
+        # the helper by naming it: at validation time it is not in the namespace.
+        parsed = ast.fix_missing_locations(_GuardPowers().visit(parsed))
+        result = eval(
+            compile(parsed, '<string>', 'eval'),
+            {"__builtins__": {}},
+            {**safe_namespace, "_calc_pow": _guarded_pow},
+        )
 
         # Normalize float results. Round before the integer check: the
         # percentage rewrite divides by 100, so exact results arrive as

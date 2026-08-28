@@ -9,6 +9,7 @@ provides the two pure-Python backends: in-memory (lost on restart) and SQLite
 (persistent, stdlib only, no external DB), plus a thin proxy that reports writes
 so caches elsewhere can drop what they are holding.
 """
+import base64
 import copy
 import json
 import logging
@@ -17,6 +18,35 @@ import sqlite3
 import threading
 
 logger = logging.getLogger(__name__)
+
+# JSON has no byte string, but the project stores one: welcome.py keeps the
+# base64 of the greeting logo under ALIVE_LOGO, and status.py/antyspam.py read it
+# back with `type(logo) is bytes` to tell a stored image from a file path. Mongo
+# round-trips bytes natively, so on the sqlite backend `json.dumps` raised
+# "Object of type bytes is not JSON serializable" and the logo silently failed to
+# save. Tag byte values on the way out and rebuild them on the way in, so all
+# three backends hand back what was put in.
+_BYTES_TAG = "__bytes_b64__"
+
+
+def _json_default(value):
+    if isinstance(value, (bytes, bytearray)):
+        return {_BYTES_TAG: base64.b64encode(bytes(value)).decode("ascii")}
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
+def _json_object_hook(obj):
+    if len(obj) == 1 and _BYTES_TAG in obj:
+        return base64.b64decode(obj[_BYTES_TAG])
+    return obj
+
+
+def _dumps(doc):
+    return json.dumps(doc, default=_json_default)
+
+
+def _loads(raw):
+    return json.loads(raw, object_hook=_json_object_hook)
 
 
 class _Result:
@@ -166,7 +196,7 @@ class SqliteCollection:
             cleaned_keys = 0
             for user_id, raw in rows:
                 try:
-                    doc = json.loads(raw)
+                    doc = _loads(raw)
                 except ValueError:
                     continue
                 if not isinstance(doc, dict):
@@ -180,7 +210,7 @@ class SqliteCollection:
                 cleaned_keys += len(dotted)
                 self._conn.execute(
                     "UPDATE sessions SET doc = ? WHERE user_id = ?",
-                    (json.dumps(doc), user_id),
+                    (_dumps(doc), user_id),
                 )
             if cleaned_docs:
                 self._conn.commit()
@@ -193,12 +223,12 @@ class SqliteCollection:
         row = self._conn.execute(
             "SELECT doc FROM sessions WHERE user_id = ?", (str(key),)
         ).fetchone()
-        return json.loads(row[0]) if row else None
+        return _loads(row[0]) if row else None
 
     def _put(self, key, doc):
         self._conn.execute(
             "INSERT OR REPLACE INTO sessions (user_id, doc) VALUES (?, ?)",
-            (str(key), json.dumps(doc)),
+            (str(key), _dumps(doc)),
         )
         self._conn.commit()
 
@@ -229,7 +259,7 @@ class SqliteCollection:
     def find(self, filt=None, *a, **kw):
         with self._lock:
             rows = self._conn.execute("SELECT doc FROM sessions").fetchall()
-        docs = [json.loads(r[0]) for r in rows]
+        docs = [_loads(r[0]) for r in rows]
         if not filt:
             return docs
         return [d for d in docs if all(d.get(k) == v for k, v in filt.items())]
@@ -333,6 +363,25 @@ if __name__ == "__main__":
         assert mem.find_one({"user_id": 1})["n"] == 5
         assert mem.find_one({"user_id": 99}) is None
         assert len(mem.find()) == 2
+
+    # Bytes must survive a round trip on every backend, and survive a *restart*
+    # on the persistent one: welcome.py stores the greeting logo as bytes and the
+    # readers use `type(logo) is bytes` to tell it from a file path.
+    logo = b"\x89PNG\r\n\x1a\n not really an image \xff\xfe"
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "bytes.db")
+        first = SqliteCollection(path)
+        first.update_one({"user_id": 5}, {"$set": {"ALIVE_LOGO": logo, "n": 1}}, upsert=True)
+        reopened = SqliteCollection(path)
+        stored = reopened.find_one({"user_id": 5})["ALIVE_LOGO"]
+        assert type(stored) is bytes and stored == logo, stored
+        assert reopened.find_one({"user_id": 5})["n"] == 1
+        mem_logo = MemoryCollection()
+        mem_logo.update_one({"user_id": 5}, {"$set": {"ALIVE_LOGO": logo}}, upsert=True)
+        assert mem_logo.find_one({"user_id": 5})["ALIVE_LOGO"] == logo
+        # A document that merely *looks* like the tag is left alone.
+        first.update_one({"user_id": 6}, {"$set": {"d": {"a": 1, "__bytes_b64__": "x"}}}, upsert=True)
+        assert SqliteCollection(path).find_one({"user_id": 6})["d"]["a"] == 1
 
     # The write proxy must forward reads and writes unchanged, and report the
     # affected user_id -- or None when the write does not name exactly one.

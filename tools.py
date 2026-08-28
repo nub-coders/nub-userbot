@@ -816,14 +816,29 @@ async def delete_if_self(message):
             await message.delete()
 
 # Message formatting utilities
-async def format_welcome_message(client, text, chat_id, user_or_chat_name):
-    """Helper function to format welcome message with real data"""
+WELCOME_PLACEHOLDERS = ("{name}", "{full_name}", "{id}", "{yourname}", "{botname}")
+
+
+async def format_welcome_message(client, text, chat_id, user_or_chat_name, full_name=None):
+    """Substitute the greeting placeholders with real data.
+
+    Kept in one place because ``setwelkm`` validates templates against
+    ``WELCOME_PLACEHOLDERS`` and this is what has to honour them. ``{botname}``
+    used to be advertised by the validator but implemented nowhere, so it
+    rendered literally, while ``{full_name}`` -- which the greeting path did
+    substitute -- was rejected as invalid.
+    """
     try:
         # Escaped: the name comes from whoever messaged us, and the template is
         # sent with HTML parse mode.
+        owner = html_esc(client.me.first_name)
         formatted_text = text.replace("{name}", html_esc(user_or_chat_name))
+        formatted_text = formatted_text.replace(
+            "{full_name}", html_esc(full_name if full_name is not None else user_or_chat_name)
+        )
         formatted_text = formatted_text.replace("{id}", str(chat_id))
-        formatted_text = formatted_text.replace("{yourname}", html_esc(client.me.first_name))
+        formatted_text = formatted_text.replace("{yourname}", owner)
+        formatted_text = formatted_text.replace("{botname}", owner)
         return formatted_text
     except Exception as e:
         logging.error(f"Error formatting welcome message: {str(e)}")

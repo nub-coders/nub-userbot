@@ -36,11 +36,13 @@ async def set_welcome_handler(client, message):
             usage_guide = (
                 f"<b>{Msg.EMOJI_WAVE} Welcome Message Configuration</b>\n\n"
                 f"<blockquote>\n"
-                f"<b>• <code>{{name}}</code>:</b> Recipient user full name\n"
+                f"<b>• <code>{{name}}</code>:</b> Recipient first name\n"
+                f"<b>• <code>{{full_name}}</code>:</b> Recipient first + last name\n"
                 f"<b>• <code>{{id}}</code>:</b> Recipient user Telegram ID\n"
-                f"<b>• <code>{{botname}}</code>:</b> Userbot owner display name\n"
+                f"<b>• <code>{{yourname}}</code>:</b> Userbot owner display name\n"
+                f"<b>• <code>{{botname}}</code>:</b> Same as <code>{{yourname}}</code>\n"
                 f"</blockquote>\n\n"
-                f"<i>Reply to any text or media message with <code>.setwelkm</code> to configure your DM greeting. Maximum media size: 5MB.</i>"
+                f"<i>Reply to any text or media message with <code>.setwelkm</code> to configure your DM greeting. The greeting is sent as a media caption, so the text may be at most 1024 characters. Maximum media size: 5MB.</i>"
             )
             return await message.reply_text(usage_guide, parse_mode=enums.ParseMode.HTML)
 
@@ -52,13 +54,24 @@ async def set_welcome_handler(client, message):
         if replied_msg.text or replied_msg.caption:
             text_obj = replied_msg.text or replied_msg.caption
             welcome_text = text_obj.strip()
-            if len(welcome_text) > 4096:
-                return await message.reply_text("Welcome message too long. Maximum 4096 characters allowed.")
+            # 1024, not 4096: the greeting always goes out as the caption of the
+            # logo (see antyspam.py, which picks send_video/send_photo), and
+            # Telegram caps captions at 1024 characters. Accepting 4096 here
+            # meant a long greeting saved fine and then failed at send time.
+            if len(welcome_text) > 1024:
+                return await message.reply_text(
+                    f"Welcome message too long ({len(welcome_text)} characters). "
+                    "It is sent as a media caption, so Telegram allows at most 1024."
+                )
 
             processed_text = text_obj.html
 
             # Validate placeholders
-            ALLOWED_PLACEHOLDERS = {"{name}", "{id}", "{botname}"}
+            # Single source of truth, shared with format_welcome_message() in
+            # tools.py -- the two lists had drifted apart, so {botname} was
+            # accepted but rendered literally and {full_name} was rejected even
+            # though the live greeting path substituted it.
+            ALLOWED_PLACEHOLDERS = set(WELCOME_PLACEHOLDERS)
             placeholder_regex = r'\{([^{}]+)\}'
             found_placeholders = set(re.findall(placeholder_regex, processed_text))
 
@@ -71,9 +84,9 @@ async def set_welcome_handler(client, message):
                 error_msg += "\n\nAllowed placeholders:\n"
                 error_msg += "\n".join(f"• {p}" for p in sorted(ALLOWED_PLACEHOLDERS))
                 error_msg += "\n\nExample usage:\n"
-                error_msg += "• Welcome {name}!\n"
+                error_msg += "• Welcome {full_name}!\n"
                 error_msg += "• Your ID: {id}\n"
-                error_msg += "• Welcome to {botname}!"
+                error_msg += "• You reached {yourname}!"
                 return await message.reply_text(error_msg)
 
             set_gvar(sender_id, "WELCOME", processed_text)
@@ -88,7 +101,12 @@ async def set_welcome_handler(client, message):
                     return await message.reply_text("Only photos, videos, GIFs, and stickers are allowed.")
 
                 # Check file size (5MB = 5 * 1024 * 1024 bytes)
-                file_size = getattr(replied_msg, 'file_size', 0)
+                # file_size lives on the media object, not on Message -- the old
+                # getattr(replied_msg, 'file_size', 0) always returned 0, so this
+                # cap never once fired.
+                media = (replied_msg.photo or replied_msg.video or
+                         replied_msg.animation or replied_msg.sticker)
+                file_size = getattr(media, "file_size", 0) or 0
                 if file_size > 5242880:  # 5MB in bytes
                     return await message.reply_text("Media size cannot exceed 5MB.")
 
@@ -108,7 +126,9 @@ async def set_welcome_handler(client, message):
             except Exception as e:
                 if m_d and os.path.exists(m_d):
                     os.remove(m_d)
-                return await message.reply_text(f"Error processing media: {str(e)}")
+                # details= is the only styled_error argument that gets escaped,
+                # and an exception string routinely carries paths and <...>.
+                return await message.reply_text(styled_error("Error processing media", details=str(e)))
 
         if not updates:
             return await message.reply_text("Nothing to update. Message must contain text and/or media.")
@@ -136,13 +156,21 @@ async def set_welcome_handler(client, message):
                     alive_logo = rename_file(alive_logo, f"{user_dir}/logo.mp4")
 
             welcome_text = gvarstatus(sender_id, "WELCOME") or f"""
-<blockquote>{bold_cool(f"👋 Warm greetings, {'full_name'}! Welcome to my private message.")}</blockquote>
+<blockquote>{bold_cool("👋 Warm greetings, {full_name}! Welcome to my private message.")}</blockquote>
 
 <blockquote>{bold_cool("Thank you for connecting with me. I am delighted to assist you. Kindly share the purpose of your message, and I will respond promptly. Your comfort is my priority.")}</blockquote>
 
 <blockquote>{bold_cool("Please avoid excessive messaging, as it may lead to being blocked. Enjoy your time here!")}</blockquote>"""
-            
 
+            # Render the placeholders so the preview shows what a visitor will
+            # actually see instead of the raw template. The owner stands in for
+            # the recipient here.
+            me = client.me
+            preview_full_name = f"{me.first_name or ''} {me.last_name or ''}".strip()
+            welcome_text = await format_welcome_message(
+                client, welcome_text, message.chat.id,
+                me.first_name or "", full_name=preview_full_name
+            )
 
             if alive_logo.endswith(".mp4"):
                 await client.send_video(
@@ -167,7 +195,7 @@ async def set_welcome_handler(client, message):
                 )
 
     except Exception as e:
-        error_msg = f"❌ Error: `{str(e)}`"
+        error_msg = styled_error("Welcome configuration failed", details=str(e))
         logger.warning(f"Welcome error for user {message.from_user.id}: {e}")
         return await message.reply_text(error_msg)
 

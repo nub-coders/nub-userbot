@@ -48,6 +48,63 @@ logger = logging.getLogger("tools")
 
 from config import apps, clients, user_sessions, admin_file, SUDO, HARDCODED_PREFIXES
 
+
+# ─────────────────── download destination confinement ───────────────────────
+# Passing a bare directory to `download_media` (which nearly every call site in
+# this project does, e.g. `download(f"{user_dir}/")`) makes kurigram fall back to
+# the *sender's* filename: `download_media.py` splits the caller's argument, gets
+# an empty basename, substitutes `media.file_name` from the document's
+# DocumentAttributeFilename verbatim, and `Client.handle_download` then writes to
+# `abspath(join(directory, file_name))` with no basename call and no traversal
+# check. A document named `../userbot/x.py` therefore lands outside the intended
+# directory -- and this project loads `userbot/*.py` and the extra-plugins
+# directory as code at startup, so an arbitrary write there is code execution on
+# the next restart. The name is chosen by whoever sent the file, not by the
+# operator who runs `.kang` or `.ocr` on it.
+#
+# `handle_download` is patched rather than the ~20 call sites because it is the
+# single funnel every download passes through -- message media, a bare file_id,
+# present and future callers alike -- and it receives the directory and the final
+# filename already separated, which is exactly where the basename belongs.
+# Sanitising is deliberately limited to path separators, traversal and leading
+# dots, so unicode filenames and spaces survive intact and downloads keep the
+# names users expect.
+def _safe_download_basename(file_name, fallback="download"):
+    """`file_name` reduced to a basename that cannot escape its directory."""
+    name = os.path.basename(str(file_name or "").replace("\\", "/"))
+    # Strips ".", ".." and hidden names like ".env" in one go.
+    return name.lstrip(".") or fallback
+
+
+def _install_download_guard():
+    original = getattr(Client, "handle_download", None)
+    if original is None or getattr(original, "_nub_guarded", False):
+        # Nothing to wrap, or already wrapped by a re-import of this module.
+        if original is None:
+            logger.warning(
+                "Client.handle_download is missing; download paths are unconfined"
+            )
+        return
+
+    async def handle_download(self, packet):
+        file_id, directory, file_name, in_memory, file_size, progress, progress_args = packet
+        safe_name = _safe_download_basename(file_name)
+        if safe_name != file_name:
+            logger.warning(
+                "Confined download filename %r to %r in %r",
+                file_name, safe_name, directory,
+            )
+        return await original(
+            self,
+            (file_id, directory, safe_name, in_memory, file_size, progress, progress_args),
+        )
+
+    handle_download._nub_guarded = True
+    Client.handle_download = handle_download
+
+
+_install_download_guard()
+
 # Simple TTL cache for user session data
 import threading
 

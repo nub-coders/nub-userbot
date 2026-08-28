@@ -3,6 +3,7 @@ import os
 import time
 import requests
 from pyrogram import Client, filters
+from pyrogram.enums import ParseMode
 from pyrogram.errors import ChatForwardsRestricted, FileReferenceExpired
 from convopyro import Conversation, listen_message
 from config import *
@@ -37,7 +38,9 @@ async def forward_message_handler(client, message):
         else:
                           message_id_str = str(message.chat.id).replace('-100', '')
                           message_link = f"https://t.me/c/{message_id_str}/{message.id}"
-        channel_details = f"<b>{channel_name}</b> {channel_username} <a href='{message_link}'>Link to message</a>"
+        # The title is somebody else's text going into an HTML message: a channel
+        # called "<Leaks>" used to vanish from this line entirely.
+        channel_details = f"<b>{html_esc(channel_name)}</b> {html_esc(channel_username)} <a href='{message_link}'>Link to message</a>"
         try:
            mess=await message.copy(app.me.username)
            await app.send_message(chat_id=sender,text=channel_details,reply_to_message_id=mess.id)
@@ -88,26 +91,50 @@ async def forward_message_handler(client, message):
                         else:
                           message_id_str = str(message.chat.id).replace('-100', '')
                           message_link = f"https://t.me/c/{message_id_str}/{message.id}"
-                        channel_details = f"<b>{channel_name}</b> {channel_username} <a href='{message_link}'>Link to message</a>"
+                        channel_details = f"<b>{html_esc(channel_name)}</b> {html_esc(channel_username)} <a href='{message_link}'>Link to message</a>"
 
-                        caption = f"<br><br>{message.text if message.caption is None else message.caption}\n\n{channel_details}"
+                        # The body is plain text with its formatting carried in
+                        # separate entities, so anything angle-bracketed in it was
+                        # read as a tag and deleted. The leading <br><br> was never
+                        # valid Telegram HTML either -- it just disappeared.
+                        body = message.caption if message.caption is not None else (message.text or "")
+                        caption = f"{html_esc(body)}\n\n{channel_details}"
 
-                        if os.path.getsize(file_path) <= 2100000000:
-                          if file_extension in ['jpg', 'jpeg', 'png', 'gif']:
-                            await app.send_photo(chat_id=sender, photo=file_path, caption=caption,progress=progress_bar)
-                          elif file_extension in ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a']:
-                            await app.send_audio(chat_id=sender, audio=file_path, caption=caption ,progress=progress_bar)
-                          elif file_extension in ['mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv']:
-                            thumb_path = f"{file_path}_thumb.jpg"
-                            generate_thumbnail(file_path, thumb_path)
-                            duration=with_opencv(file_path)
-                            await app.send_video(chat_id=sender, video=file_path, caption=caption ,progress=progress_bar,duration=duration,thumb=thumb_path)
-                            os.remove(thumb_path)
+                        # os.remove used to sit on the success path only, so a
+                        # send that raised -- a FloodWait, a rejected thumbnail,
+                        # a media type Telegram would not take -- left the
+                        # download in user_ID/ forever. @retry() then re-ran the
+                        # whole handler and downloaded it again.
+                        thumb_path = None
+                        try:
+                          if os.path.getsize(file_path) <= 2100000000:
+                            if file_extension in ['jpg', 'jpeg', 'png', 'gif']:
+                              await app.send_photo(chat_id=sender, photo=file_path, caption=caption,progress=progress_bar)
+                            elif file_extension in ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a']:
+                              await app.send_audio(chat_id=sender, audio=file_path, caption=caption ,progress=progress_bar)
+                            elif file_extension in ['mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv']:
+                              thumb_path = f"{file_path}_thumb.jpg"
+                              generate_thumbnail(file_path, thumb_path)
+                              duration=with_opencv(file_path)
+                              await app.send_video(chat_id=sender, video=file_path, caption=caption ,progress=progress_bar,duration=duration,thumb=thumb_path)
+                            else:
+                              await app.send_document( sender, file_path, caption=caption ,progress=progress_bar)
                           else:
-                            await app.send_document( sender, file_path, caption=caption ,progress=progress_bar)
-                        else:
-                         await big_file(msg,sender,file_path)
-                        await msg.delete()
-                        os.remove(file_path)
+                           await big_file(msg,sender,file_path)
+                          await msg.delete()
+                        finally:
+                          for leftover in (thumb_path, file_path):
+                            if leftover and os.path.exists(leftover):
+                              os.remove(leftover)
            else:
-                 await bot.send_message(sender,message.text)
+                 if message.text:
+                   # Relayed verbatim: with the client's default parse mode a
+                   # forwarded message containing <tags> or *asterisks* was
+                   # reinterpreted, and anything tag-shaped silently vanished.
+                   # Entities carry the original formatting across instead.
+                   await bot.send_message(
+                       sender,
+                       message.text,
+                       parse_mode=ParseMode.DISABLED,
+                       entities=message.entities,
+                   )

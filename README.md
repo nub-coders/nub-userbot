@@ -92,6 +92,22 @@ A feature-rich Telegram userbot built with Pyrogram, offering a wide range of au
 docker compose up -d
 ```
 
+The container runs as a non-root user (uid 10001), so downloads and the SQLite
+store live in named volumes rather than host directories — a bind-mounted host
+path arrives owned by whoever created it and the container could not write to it.
+To use host paths instead:
+
+```bash
+mkdir -p downloads state && sudo chown -R 10001:10001 downloads state
+# then swap the volume lines in docker-compose.yml for ./downloads:/app/downloads
+# and ./state:/app/state
+```
+
+Pull files out of a volume with `docker compose cp userbot:/app/downloads/<name> .`.
+The image sets `SQLITE_PATH=/app/state/sessions.db`; anything you set in `.env`
+still wins, but point it inside `/app/state` or the store will not survive
+`docker compose up` recreating the container.
+
 ## 🚢 Deploy
 
 [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/nub-coders/nub-userbot)

@@ -1,0 +1,50 @@
+# Docker does not read .gitignore, so without this file `COPY . .` bakes the
+# operator's .env -- SESSION_STR, API_HASH, AI_API_KEY -- into an image layer.
+# It stays readable there for anyone who can pull or export the image, even
+# though compose passes those values in at runtime via `env_file`.
+.env
+.env.*
+!.env.example
+
+# Live credentials and state. A host copy in the build context would be shipped
+# to whoever gets the image, and would shadow the container's own store.
+*.session
+*.session-journal
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+data/sessions.db
+*.pem
+*.key
+
+# Build and test artifacts. Nothing here runs in the container, and stale
+# __pycache__ from a different Python build is actively unhelpful.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+conftest.py
+test_*.py
+
+# Runtime scratch. The image creates these itself; a host copy only bloats it.
+downloads/
+temp/
+state/
+cache/
+user_*/
+plugins/
+
+# Repo furniture with no runtime role.
+.github/
+.gitignore
+.dockerignore
+CONTRIBUTING.md
+
+# NOTE: .git is deliberately *not* excluded. `.update` runs `git pull --ff-only`
+# (userbot/update.py) and pip installs one requirement from a git URL, so a build
+# without it loses both. It costs about 7 MB.
+#
+# words.txt (9 MB) and userbot.jpg are likewise kept: the word games read
+# words.txt directly and userbot.jpg is the fallback alive/welcome image.

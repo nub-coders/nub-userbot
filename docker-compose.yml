@@ -4,5 +4,20 @@ services:
     restart: unless-stopped
     env_file: .env
     volumes:
-      - ./downloads:/app/downloads
-      - ./sessions:/app/sessions
+      # Named volumes rather than host directories: the container runs as uid
+      # 10001, and a bind-mounted host path arrives owned by whoever created it
+      # (root, when Docker creates a missing one), which the container then
+      # cannot write to. To use host paths instead, run
+      #   mkdir -p downloads state && sudo chown -R 10001:10001 downloads state
+      # and swap the two lines below for ./downloads:/app/downloads and
+      # ./state:/app/state.
+      #
+      # The old ./sessions:/app/sessions mount is gone: nothing ever wrote there.
+      # The SQLite store lives at SQLITE_PATH, which the image points at
+      # /app/state, so persistence used to be silently ephemeral.
+      - downloads:/app/downloads
+      - state:/app/state
+
+volumes:
+  downloads:
+  state:

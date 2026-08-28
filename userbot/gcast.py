@@ -1,5 +1,4 @@
 
-import asyncio
 import os
 from pyrogram import Client, filters
 from pyrogram.errors import ChatForwardsRestricted, FileReferenceExpired, MessageIdInvalid, FloodWait
@@ -19,7 +18,9 @@ async def gcast_handler(client, message):
     os.makedirs(user_dir, exist_ok=True)
     user_id = client.me.id
     user_data = user_sessions.find_one({"user_id": user_id}) or {}
-    admin_ids = None
+    # None here meant `dialog.chat.id in admin_ids` raised TypeError for every
+    # dialog when the admin file was absent, which is the default.
+    admin_ids = []
     if os.path.exists(admin_file):
        with open(admin_file, "r") as file:
           admin_ids = [int(line.strip()) for line in file.readlines()]
@@ -39,34 +40,46 @@ async def gcast_handler(client, message):
         try:
            message_to_cast = await reply_msg.copy(app.me.username) if reply_msg else await client.send_message(app.me.id, text_or_file)
         except (ChatForwardsRestricted, FileReferenceExpired, MessageIdInvalid):
-           if reply_msg.media:
-               caption = f"{reply_msg.text if reply_msg.caption is None else reply_msg.caption}"
-               await message.edit( "Downloading media/document......")
-               file_path=await reply_msg.download(f"{user_dir}/")
-               file_extension = file_path.split('.')[-1]
-               if os.path.getsize(file_path) <= 2100000000:
-                  if file_extension in ['jpg', 'jpeg', 'png', 'gif']:
-                            message_to_cast = await client.send_photo(chat_id=app.me.id, photo=file_path, caption=caption)
-                  elif file_extension in ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a']:
-                            message_to_cast = await client.send_audio(chat_id=app.me.id, audio=file_path, caption=caption)
-                  elif file_extension in ['mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv']:
-                            thumb_path = f"{file_path}_thumb.jpg"
-                            generate_thumbnail(file_path, thumb_path)
-                            duration=with_opencv(file_path)
-                            message_to_cast = await client.send_video(chat_id=app.me.id, video=file_path, caption=caption, duration=duration,thumb=thumb_path)
-                            os.remove(thumb_path)
-                  else:
-                            message_to_cast = await client.send_document(app.me.id, file_path, caption=caption)
+           if not (reply_msg and reply_msg.media):
+               return await message.edit(styled_error("That message cannot be copied for broadcast."))
+           # The body is plain text whose formatting lives in separate entities,
+           # so anything angle-bracketed in it was read as a tag and dropped.
+           caption = html_esc(reply_msg.caption if reply_msg.caption is not None else (reply_msg.text or ""))
+           await message.edit( "Downloading media/document......")
+           file_path=await reply_msg.download(f"{user_dir}/")
+           file_extension = file_path.split('.')[-1]
+           # The download used to be deleted only on the over-2GB path, so every
+           # successful gcast of restricted media left a copy in user_<id>/ --
+           # and the generated thumbnail only went away if send_video returned.
+           thumb_path = None
+           try:
+               if os.path.getsize(file_path) > 2100000000:
+                   return await message.edit("Cannot operate on a file larger than 2GB")
+               if file_extension in ['jpg', 'jpeg', 'png', 'gif']:
+                   message_to_cast = await client.send_photo(chat_id=app.me.id, photo=file_path, caption=caption)
+               elif file_extension in ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a']:
+                   message_to_cast = await client.send_audio(chat_id=app.me.id, audio=file_path, caption=caption)
+               elif file_extension in ['mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv']:
+                   thumb_path = f"{file_path}_thumb.jpg"
+                   generate_thumbnail(file_path, thumb_path)
+                   duration=with_opencv(file_path)
+                   message_to_cast = await client.send_video(chat_id=app.me.id, video=file_path, caption=caption, duration=duration,thumb=thumb_path)
                else:
-                   await message.edit( "Can' operate on file more than 2GB")
-                   return os.remove(file_path)
-           else:
-                message_to_cast = await client.send_message(app.me.id, reply_msg.text)
+                   message_to_cast = await client.send_document(app.me.id, file_path, caption=caption)
+           finally:
+               for leftover in (thumb_path, file_path):
+                   if leftover and os.path.exists(leftover):
+                       os.remove(leftover)
         except FloodWait as e:
-                    await asyncio.sleep(e.value)
-
+            # This slept and fell through with message_to_cast never assigned, so
+            # the loop below died on NameError and the command reported itself as
+            # "Broadcast failed: name 'message_to_cast' is not defined".
+            return await message.edit(styled_error(
+                f"Telegram asked for a {e.value}s wait before staging the broadcast.",
+                hint="Run the command again once it has passed.",
+            ))
         except Exception as e:
-                   await message.edit(f"Error getting message: {e}")
+            return await message.edit(styled_error("Could not stage the broadcast message", details=e))
         blocked_list = user_data.get("blocked_list", [])
         await message.reply("Gcasting message...")
         sed = 0
@@ -117,5 +130,5 @@ async def gcast_handler(client, message):
     except IndexError:
         await message.edit(styled_error("Missing arguments", hint="Usage: <code>/gcast [-all|-pvt|-grp] [message/reply]</code>"), parse_mode=enums.ParseMode.HTML)
     except Exception as e:
-        await message.edit(styled_error(f"Broadcast failed: {e}"), parse_mode=enums.ParseMode.HTML)
+        await message.edit(styled_error("Broadcast failed", details=e), parse_mode=enums.ParseMode.HTML)
 

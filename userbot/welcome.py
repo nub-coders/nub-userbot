@@ -23,7 +23,7 @@ async def convert_to_image(message, client):
         logger.warning(f"Error converting sticker: {e}")
         return None
 
-@Client.on_message(filters.command("setwelkm", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
+@Client.on_message(filters.command("setwelkm", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 async def set_welcome_handler(client, message):
     try:
         sender_id = message.from_user.id
@@ -141,7 +141,7 @@ async def set_welcome_handler(client, message):
         try:
             logo = gvarstatus(sender_id, "ALIVE_LOGO")
             if not logo and client.me.photo:
-                photos = await client.get_profile_photos("me")
+                photos = [p async for p in client.get_chat_photos("me")]
                 if photos:
                     logo = await client.download_media(photos[0].file_id, f"{user_dir}/logo.jpg")
             if not logo:
@@ -172,7 +172,7 @@ async def set_welcome_handler(client, message):
                 me.first_name or "", full_name=preview_full_name
             )
 
-            if alive_logo.endswith(".mp4"):
+            if alive_logo and str(alive_logo).endswith(".mp4"):
                 await client.send_video(
                     message.chat.id,
                     alive_logo,
@@ -181,7 +181,7 @@ async def set_welcome_handler(client, message):
             else:
                 await client.send_photo(
                     message.chat.id,
-                    alive_logo,
+                    alive_logo or "userbot.jpg",
                     caption=welcome_text,
                 )
 
@@ -199,7 +199,7 @@ async def set_welcome_handler(client, message):
         logger.warning(f"Welcome error for user {message.from_user.id}: {e}")
         return await message.reply_text(error_msg)
 
-@Client.on_message(filters.command("resetwelkm", prefixes=HARDCODED_PREFIXES) & filters.me)
+@Client.on_message(filters.command("resetwelkm", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 async def reset_welcome_handler(client, message):
     user_id = message.from_user.id
 

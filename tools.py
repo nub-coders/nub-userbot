@@ -500,7 +500,9 @@ DEFAULT_COMMANDS = {
     'bio': '**Update Bio** - Update Telegram bio text.\n\n**Usage:** `[prefix]bio <text>`',
     'pfp': '**Update PFP** - Set profile picture from photo.\n\n**Usage:** `[prefix]pfp [reply]`',
     'unafk': '**Remove AFK** - Remove away status.\n\n**Usage:** `[prefix]unafk`',
-    'antispam': '**Antispam Toggle** - Toggle anti-spam filter.\n\n**Usage:** `[prefix]antispam`',
+    'antispam': '**Antispam Toggle** - Toggle PM anti-spam / permit filter.\n\n**Usage:** `[prefix]antispam [on|off|status]`',
+    'pmpermit': '**PM Permit** - Alias for antispam. Toggle PM protection.\n\n**Usage:** `[prefix]pmpermit [on|off|status]`',
+    'pmguard': '**PM Guard** - Alias for antispam. Toggle PM protection.\n\n**Usage:** `[prefix]pmguard [on|off|status]`',
     'cas': '**CAS Check** - Check Combots Anti-Spam status.\n\n**Usage:** `[prefix]cas [user]`',
     'approve': '**Approve PM** - Approve user to DM.\n\n**Usage:** `[prefix]approve [user]`',
     'disapprove': '**Disapprove PM** - Disapprove user DM access.\n\n**Usage:** `[prefix]disapprove [user]`',
@@ -758,16 +760,16 @@ def retry(max_retries=3, initial_delay=5, backoff=2, exceptions=(FloodWait, OSEr
 # File and media utilities
 def rename_file(old_name, new_name):
     try:
-        os.rename(old_name, new_name)
+        os.replace(old_name, new_name)
         new_file_path = os.path.abspath(new_name)
         logger.info(f'File renamed from {old_name} to {new_name}')
         return new_file_path
     except FileNotFoundError:
         logger.warning(f'The file {old_name} does not exist.')
-    except FileExistsError:
-        logger.warning(f'The file {new_name} already exists.')
+        return old_name if os.path.exists(old_name) else (new_name if os.path.exists(new_name) else None)
     except Exception as e:
         logger.warning(f'File rename failed: {e}')
+        return old_name if os.path.exists(old_name) else None
 
 def generate_thumbnail(video_path, thumb_path):
     reader = imageio.get_reader(video_path)
@@ -887,19 +889,21 @@ def create_channel_custom_filter():
     return filters.create(filter_func)
 
 def crcustom_filter():
-    def filte_func(_, client, message):
-         user_data = cached_get_user_data(client.me.id)
-         spam_control = user_data.get('Spam_control', 'True')
-         if spam_control == 'False':
+    def filter_func(_, client, message):
+        user_data = cached_get_user_data(client.me.id)
+        spam_control = user_data.get('Spam_control', True)
+        if isinstance(spam_control, str):
+            spam_control = spam_control.lower() not in ('false', '0', 'off', 'disable', 'disabled')
+        if not spam_control:
             return False
-         white_listed = user_data.get('white_listed', [])
-         if not message.from_user:
-           return False
-         sender_id = message.from_user.id
-         if sender_id in white_listed:
+        white_listed = user_data.get('white_listed', [])
+        if not message.from_user:
             return False
-         return True
-    return filters.create(filte_func)
+        sender_id = message.from_user.id
+        if sender_id in white_listed:
+            return False
+        return True
+    return filters.create(filter_func)
 
 # File upload utilities
 _GOFILE_SERVERS_URL = "https://api.gofile.io/servers"

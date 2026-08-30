@@ -13,7 +13,7 @@ AFK_REPLY_COOLDOWN = 300  # seconds, per chat and per mentioner
 # Support filter
 is_support = filters.create(lambda _, __, message: message.chat.is_support)
 
-@Client.on_message(filters.mentioned & ~filters.channel & ~filters.me & ~filters.bot & ~is_support)
+@Client.on_message((filters.mentioned | filters.private) & ~filters.channel & ~filters.me & ~filters.bot & ~is_support)
 async def afk_handler(client, message):
     # Anonymous admins and linked-channel forwards arrive with no from_user, and
     # either can carry a mention of us; `~filters.channel` only excludes channel

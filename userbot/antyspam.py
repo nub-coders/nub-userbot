@@ -1,13 +1,10 @@
-
 import datetime
-import asyncio
 import os
 import base64
 import magic
 import logging
-from pyrogram import Client, filters
+from pyrogram import Client, filters, enums
 from pyrogram.types import Message
-from pyrogram.errors import FloodWait
 from config import *
 from tools import *
 
@@ -19,53 +16,91 @@ mime = magic.Magic(mime=True)
 # Support filter
 is_support = filters.create(lambda _, __, message: message.chat.is_support)
 
+
+def _is_spam_control_enabled(user_data: dict) -> bool:
+    val = user_data.get("Spam_control", True)
+    if isinstance(val, str):
+        return val.lower() not in ("false", "0", "off", "disable", "disabled")
+    return bool(val)
+
+
 # Custom filter for spam control
 def crcustom_filter():
     def filte_func(_, client, message):
-         user_data = cached_get_user_data(client.me.id)
-         spam_control = user_data.get('Spam_control', 'True')
-         if spam_control == 'False':
+        user_data = cached_get_user_data(client.me.id)
+        if not _is_spam_control_enabled(user_data):
             return False
-         white_listed = user_data.get('white_listed', [])
-         if not message.from_user:
-           return False
-         sender_id = message.from_user.id
-         if sender_id in white_listed:
+        white_listed = user_data.get("white_listed", [])
+        if not message.from_user:
             return False
-         return True
+        sender_id = message.from_user.id
+        if sender_id in white_listed:
+            return False
+        return True
     return filters.create(filte_func)
+
+
+async def _extract_target_user(client, message):
+    """Extract (user_id, display_name) from reply, command argument, or current PM chat."""
+    if message.reply_to_message and message.reply_to_message.from_user:
+        u = message.reply_to_message.from_user
+        name = html_esc(f"{u.first_name} {u.last_name or ''}".strip())
+        return u.id, name
+
+    args = cmd_text(message).split(maxsplit=1)
+    if len(args) >= 2:
+        target_str = args[1].strip()
+        try:
+            u = await client.get_users(int(target_str) if target_str.isdigit() or (target_str.startswith("-") and target_str[1:].isdigit()) else target_str)
+            name = html_esc(f"{u.first_name} {u.last_name or ''}".strip())
+            return u.id, name
+        except Exception:
+            if target_str.isdigit():
+                return int(target_str), target_str
+            raise
+
+    if message.chat.type == enums.ChatType.PRIVATE:
+        name = html_esc(message.chat.first_name or str(message.chat.id))
+        return message.chat.id, name
+
+    return None, None
+
 
 @Client.on_message(filters.private & ~filters.me & ~filters.bot & crcustom_filter())
 @retry()
 async def handle_user(client, message):
     if getattr(message, 'service', None):
         return
-        
+
     logger.debug("Handling user...")
     sender_id = message.from_user.id
 
     # Check if the user is an admin
     if os.path.exists(admin_file):
-        with open(admin_file, "r") as file:
-            admin_ids = [int(line.strip()) for line in file.readlines()]
-            if sender_id in admin_ids:
-               return
-    if message.chat.id == 777000:
-      return
+        try:
+            with open(admin_file, "r") as file:
+                admin_ids = [int(line.strip()) for line in file.readlines() if line.strip().isdigit()]
+                if sender_id in admin_ids:
+                    return
+        except Exception as e:
+            logger.warning(f"Error reading admin_file: {e}")
+
+    if message.chat.id == 777000 or sender_id == 777000:
+        return
+
     logger.debug(f"Sender ID: {sender_id}")
-    # Check if user is whitelisted
-    user_data = user_sessions.find_one({"user_id": client.me.id})
-    if user_data:
-        users = user_data.get('users', {})
-        spam_control = user_data.get('Spam_control', True)
-        if not spam_control:
-            logger.debug("Spam control is off, returning.")
-            return
-        white_listed = user_data.get('white_listed', [])
-        if sender_id in white_listed:
-            logger.debug("User is whitelisted. Skipping...")
-            return
-    
+
+    # Check if user is whitelisted or spam control is disabled
+    user_data = user_sessions.find_one({"user_id": client.me.id}) or {}
+    if not _is_spam_control_enabled(user_data):
+        logger.debug("Spam control is off, returning.")
+        return
+
+    white_listed = user_data.get('white_listed', [])
+    if sender_id in white_listed:
+        logger.debug("User is whitelisted. Skipping...")
+        return
+
     # Update user count in user_sessions
     user_sessions.update_one(
         {"user_id": client.me.id},
@@ -74,129 +109,170 @@ async def handle_user(client, message):
         },
         upsert=True
     )
+    invalidate_session_cache(client.me.id)
     logger.debug("User count updated.")
 
-    # Check if user should be blocked
-    user_data = user_sessions.find_one({"user_id": client.me.id})
-    if user_data:
-        users = user_data.get('users', {})
-        user_count = users.get(str(sender_id), 0)
-        session_name = f'user_{client.me.id}'
-        user_dir = session_name
-        os.makedirs(user_dir, exist_ok=True)
-        # Escaped: this is a stranger's chosen display name going into a
-        # message we send with HTML parse mode. Unescaped, a name containing
-        # tags gets them honoured -- somebody called
-        # '<a href="http://evil">click</a>' would have our account send that as
-        # a working link.
-        full_name = html_esc(f"{message.from_user.first_name} {message.from_user.last_name or ''}")
-        spam_control = user_data.get('Spam_control', True)
+    # Check if user should receive welcome or be blocked/deleted
+    user_data = user_sessions.find_one({"user_id": client.me.id}) or {}
+    users = user_data.get('users', {})
+    user_count = users.get(str(sender_id), 0)
+    session_name = f'user_{client.me.id}'
+    user_dir = session_name
+    os.makedirs(user_dir, exist_ok=True)
 
-    # Render the settings menu with emojis
-        delete_count = user_data.get('delete_count', 0)
-        block_count = user_data.get('block_count', 0)
-        if user_count == 1:
-            session_name = f'user_{client.me.id}'
-            user_dir = session_name
-            os.makedirs(user_dir, exist_ok=True)
-            photu = None
-            async for photo in client.get_chat_photos(client.me.id):
-                photu = photo.file_id
-            logo = gvarstatus(client.me.id, "ALIVE_LOGO") or (await client.download_media(client.me.photo.big_file_id, f"{user_dir}/{'logo.mp4' if client.me.photo.has_animation else 'logo.jpg'}") if client.me.photo else "userbot.jpg")
-            alive_logo = logo
-            if type(logo) is bytes:
-              alive_logo = f"{user_dir}/logo.jpg"
-              with open(alive_logo, "wb") as fimage:
+    full_name = html_esc(f"{message.from_user.first_name} {message.from_user.last_name or ''}".strip())
+
+    delete_count = user_data.get('delete_count', 0)
+    block_count = user_data.get('block_count', 0)
+
+    if user_count == 1:
+        logo = gvarstatus(client.me.id, "ALIVE_LOGO") or (await client.download_media(client.me.photo.big_file_id, f"{user_dir}/{'logo.mp4' if getattr(client.me.photo, 'has_animation', False) else 'logo.jpg'}") if client.me.photo else "userbot.jpg")
+        alive_logo = logo
+        if isinstance(logo, bytes):
+            alive_logo = f"{user_dir}/logo.jpg"
+            with open(alive_logo, "wb") as fimage:
                 fimage.write(base64.b64decode(logo))
-              if 'video' in mime.from_file(alive_logo):
-                 alive_logo = rename_file(alive_logo, f"{user_dir}/logo.mp4")
-            greet_message = gvarstatus(client.me.id, "WELCOME") or f"""<blockquote>{bold_cool(f"👋 Warm greetings, {full_name}! Welcome to my private message.")}</blockquote>
+            if 'video' in mime.from_file(alive_logo):
+                alive_logo = rename_file(alive_logo, f"{user_dir}/logo.mp4")
+
+        greet_message = gvarstatus(client.me.id, "WELCOME") or f"""<blockquote>{bold_cool(f"👋 Warm greetings, {{full_name}}! Welcome to my private message.")}</blockquote>
 
 <blockquote>{bold_cool("Thank you for connecting with me. I am delighted to assist you. Kindly share the purpose of your message, and I will respond promptly. Your comfort is my priority.")}</blockquote>
 
 <blockquote>{bold_cool("Please avoid excessive messaging, as it may lead to being blocked. Enjoy your time here!")}</blockquote>"""
-            
-            greet_message = greet_message.replace("{full_name}", full_name)
-            send = client.send_video if alive_logo.endswith(".mp4") else client.send_photo
-            await send(
-                message.chat.id,
-                alive_logo,
-                caption=await format_welcome_message(client, greet_message,
-message.chat.id, message.from_user.first_name)
-            )
 
-        elif block_count > 0 and user_count >= block_count:
-            if user_count == block_count:
-               warning_message = bold_cool(f'Auto-block mode activated.\n\nYour message was flagged as potentially unwanted. Further messages from you will result in your account being blocked.')
-               await client.send_message(message.chat.id, warning_message)
-            else:
-               logger.debug("Blocking user...")
-               await client.block_user(sender_id)
-        elif delete_count > 0 and user_count >= delete_count:
-            if user_count == delete_count:
-               warning_message = bold_cool('Auto-delete mode activated.\n\nYour message was flagged as potentially irrelevant. All subsequent messages from you will be automatically deleted.')
-               await client.send_message(message.chat.id, warning_message)
-            else:
-               logger.debug("Deleting message...")
-               await message.delete()
+        caption = await format_welcome_message(
+            client, greet_message, message.chat.id, message.from_user.first_name, full_name=full_name
+        )
+        send = client.send_video if (alive_logo and str(alive_logo).endswith(".mp4")) else client.send_photo
+        await send(
+            message.chat.id,
+            alive_logo or "userbot.jpg",
+            caption=caption
+        )
 
-@Client.on_message(filters.command("approve", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
+    elif block_count > 0 and user_count >= block_count:
+        if user_count == block_count:
+            warning_message = bold_cool('Auto-block mode activated.\n\nYour message was flagged as potentially unwanted. Further messages from you will result in your account being blocked.')
+            await client.send_message(message.chat.id, warning_message)
+        else:
+            logger.debug("Blocking user...")
+            await client.block_user(sender_id)
+    elif delete_count > 0 and user_count >= delete_count:
+        if user_count == delete_count:
+            warning_message = bold_cool('Auto-delete mode activated.\n\nYour message was flagged as potentially irrelevant. All subsequent messages from you will be automatically deleted.')
+            await client.send_message(message.chat.id, warning_message)
+        else:
+            logger.debug("Deleting message...")
+            await message.delete()
+
+
+@Client.on_message(filters.command(["antispam", "pmpermit", "pmguard"], prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
+@retry()
+async def toggle_antispam(client, message):
+    args = cmd_text(message).split()[1:] if len(cmd_text(message).split()) > 1 else []
+    user_id = client.me.id
+    user_data = user_sessions.find_one({"user_id": user_id}) or {}
+    current = _is_spam_control_enabled(user_data)
+
+    if not args:
+        new_state = not current
+    elif args[0].lower() in ("on", "enable", "true", "yes", "1"):
+        new_state = True
+    elif args[0].lower() in ("off", "disable", "false", "no", "0"):
+        new_state = False
+    elif args[0].lower() == "status":
+        state_str = "Enabled 🟢" if current else "Disabled 🔴"
+        return await edit_or_reply(message, f"<b>PM Anti-Spam / Permit:</b> <code>{state_str}</code>")
+    else:
+        return await edit_or_reply(message, styled_error("Usage: `[prefix]antispam [on|off|status]`"))
+
+    user_sessions.update_one({"user_id": user_id}, {"$set": {"Spam_control": new_state}}, upsert=True)
+    invalidate_session_cache(user_id)
+    state_str = "Enabled 🟢" if new_state else "Disabled 🔴"
+    await edit_or_reply(message, styled_success(f"PM Anti-Spam / Permit is now <b>{state_str}</b>."))
+
+
+@Client.on_message(filters.command("approve", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 @retry()
 async def approve_user(client, message):
     logger.debug("Approving user...")
-    chat_id = message.chat.id
     try:
-        await client.unblock_user(chat_id)
-        logger.debug(f"User {chat_id} unblocked.")
+        target_id, target_name = await _extract_target_user(client, message)
     except Exception as e:
-        logger.warning(f"Error unblocking user {chat_id}: {e}")
+        return await edit_or_reply(message, styled_error("Failed to find user", details=str(e)))
 
-    user_data = user_sessions.find_one({"user_id": client.me.id})
-    if user_data:
-        white_listed = user_data.get('white_listed', [])
-        if chat_id not in white_listed:
-            user_sessions.update_one(
-                {"user_id": client.me.id},
-                {"$push": {"white_listed": chat_id}}
-            )
-            logger.debug(f"User {chat_id} added to whitelist.")
-            await message.edit_text("You have been approved and added to the whitelist.")
-        else:
-            logger.debug(f"User {chat_id} is already in the whitelist.")
-            await message.edit_text("You are already in the whitelist.")
+    if not target_id:
+        return await edit_or_reply(message, styled_error("Reply to a user, provide user ID/username, or use in a private chat."))
+
+    try:
+        await client.unblock_user(target_id)
+        logger.debug(f"User {target_id} unblocked.")
+    except Exception as e:
+        logger.warning(f"Error unblocking user {target_id}: {e}")
+
+    user_data = user_sessions.find_one({"user_id": client.me.id}) or {}
+    white_listed = user_data.get('white_listed', [])
+    if target_id not in white_listed:
+        user_sessions.update_one(
+            {"user_id": client.me.id},
+            {
+                "$push": {"white_listed": target_id},
+                "$set": {f"users.{target_id}": 0}
+            },
+            upsert=True
+        )
+        invalidate_session_cache(client.me.id)
+        logger.debug(f"User {target_id} added to whitelist.")
     else:
-        user_sessions.insert_one({
-            "user_id": client.me.id,
-            "white_listed": [chat_id]
-        })
-        logger.debug(f"User {chat_id} added to whitelist (new entry).")
-        await message.edit_text("You have been approved and added to the whitelist.")
+        user_sessions.update_one(
+            {"user_id": client.me.id},
+            {"$set": {f"users.{target_id}": 0}},
+            upsert=True
+        )
+        invalidate_session_cache(client.me.id)
 
-@Client.on_message(filters.command("disapprove", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
+    if message.chat.type == enums.ChatType.PRIVATE and message.chat.id == target_id and len(cmd_text(message).split()) == 1 and not message.reply_to_message:
+        await edit_or_reply(message, "You have been approved and added to the whitelist.")
+    else:
+        label = target_name or f"<code>{target_id}</code>"
+        await edit_or_reply(message, styled_success(f"User {label} approved and added to whitelist."))
+
+
+@Client.on_message(filters.command("disapprove", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 @retry()
 async def disapprove_user(client, message):
-    chat_id = message.chat.id
-    user_data = user_sessions.find_one({"user_id": client.me.id})
-    if user_data:
-        white_listed = user_data.get('white_listed', [])
-        if chat_id in white_listed:
-            user_sessions.update_one(
-                {"user_id": client.me.id},
-                {
-                    "$pull": {"white_listed": chat_id},
-                    "$set": {f"users.{chat_id}": 0}
-                }
-            )
-            logger.debug(f"User {chat_id} removed from whitelist and user count reset.")
-            await message.edit_text("You have been removed from the whitelist and your message count has been reset.")
-        else:
-            logger.debug(f"User {chat_id} is not in the whitelist.")
-            await message.edit_text("You are not in the whitelist.")
-    else:
-        logger.warning(f"No data found for user_id {client.me.id}.")
-        await message.edit_text("No data found for the bot user.")
+    try:
+        target_id, target_name = await _extract_target_user(client, message)
+    except Exception as e:
+        return await edit_or_reply(message, styled_error("Failed to find user", details=str(e)))
 
-@Client.on_message(filters.command("rmall", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
+    if not target_id:
+        return await edit_or_reply(message, styled_error("Reply to a user, provide user ID/username, or use in a private chat."))
+
+    user_data = user_sessions.find_one({"user_id": client.me.id}) or {}
+    white_listed = user_data.get('white_listed', [])
+    if target_id in white_listed:
+        user_sessions.update_one(
+            {"user_id": client.me.id},
+            {
+                "$pull": {"white_listed": target_id},
+                "$set": {f"users.{target_id}": 0}
+            }
+        )
+        invalidate_session_cache(client.me.id)
+        logger.debug(f"User {target_id} removed from whitelist and user count reset.")
+        if message.chat.type == enums.ChatType.PRIVATE and message.chat.id == target_id and len(cmd_text(message).split()) == 1 and not message.reply_to_message:
+            await edit_or_reply(message, "You have been removed from the whitelist and your message count has been reset.")
+        else:
+            label = target_name or f"<code>{target_id}</code>"
+            await edit_or_reply(message, styled_success(f"User {label} removed from whitelist."))
+    else:
+        label = target_name or f"<code>{target_id}</code>"
+        await edit_or_reply(message, styled_error(f"User {label} is not in the whitelist."))
+
+
+@Client.on_message(filters.command("rmall", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 @retry()
 async def remove_all_whitelisted_users(client, message):
     logger.debug("Removing all whitelisted users...")
@@ -205,19 +281,21 @@ async def remove_all_whitelisted_users(client, message):
         {"user_id": client.me.id},
         {"$set": {"white_listed": []}}
     )
-    
+    invalidate_session_cache(client.me.id)
+
     if result.modified_count > 0:
         logger.debug("All whitelisted users removed.")
-        await message.edit_text("All whitelisted users have been removed.")
+        await edit_or_reply(message, styled_success("All whitelisted users have been removed."))
     else:
         logger.debug("No whitelisted users to remove.")
-        await message.edit_text("There were no whitelisted users to remove.")
+        await edit_or_reply(message, styled_error("There were no whitelisted users to remove."))
 
-@Client.on_message(filters.command("rstall", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
+
+@Client.on_message(filters.command("rstall", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 @retry()
 async def reset_all_users_count(client, message):
     logger.debug("Resetting all users' counts to 0...")
-    
+
     user_data = user_sessions.find_one({"user_id": client.me.id})
     if user_data:
         users = user_data.get('users', {})
@@ -227,36 +305,40 @@ async def reset_all_users_count(client, message):
                     {"user_id": client.me.id},
                     {"$set": {f"users.{user_id}": 0}}
                 )
+        invalidate_session_cache(client.me.id)
         logger.debug("All users' counts have been reset to 0.")
-        await message.edit_text("All users' message counts have been reset to 0.")
+        await edit_or_reply(message, styled_success("All users' message counts have been reset to 0."))
     else:
-        logger.warning(f"No data found for user_id {client.me.id}.")
-        await message.edit_text("No data found for the bot user.")
+        await edit_or_reply(message, styled_error("No data found for the bot user."))
 
-@Client.on_message(filters.command("rst", prefixes=HARDCODED_PREFIXES) & filters.private & filters.me)
+
+@Client.on_message(filters.command("rst", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 @retry()
 async def reset_user_count(client, message):
-    logger.debug("Resetting user count for specific chat...")
-    chat_id = str(message.chat.id)  # Ensure chat_id is a string to match MongoDB keys
+    try:
+        target_id, target_name = await _extract_target_user(client, message)
+    except Exception as e:
+        return await edit_or_reply(message, styled_error("User not found.", details=str(e)))
 
-    user_data = user_sessions.find_one({"user_id": client.me.id})
-    if user_data:
-        users = user_data.get('users', {})
-        if chat_id in users:
-            user_sessions.update_one(
-                {"user_id": client.me.id},
-                {"$set": {f"users.{chat_id}": 0}}
-            )
-            logger.debug(f"User count for {chat_id} has been reset to 0.")
-            await message.edit_text(f"Your message count has been reset to 0.")
-        else:
-            logger.debug(f"No count found for {chat_id}.")
-            await message.edit_text("No count found for your chat ID.")
+    if not target_id:
+        return await edit_or_reply(message, styled_error("Reply to a user, provide a user ID/username, or run in a private chat."))
+
+    chat_id = str(target_id)
+    user_data = user_sessions.find_one({"user_id": client.me.id}) or {}
+    users = user_data.get('users', {})
+    if chat_id in users:
+        user_sessions.update_one(
+            {"user_id": client.me.id},
+            {"$set": {f"users.{chat_id}": 0}}
+        )
+        invalidate_session_cache(client.me.id)
+        logger.debug(f"User count for {chat_id} has been reset to 0.")
+        await edit_or_reply(message, styled_success(f"Message count for `{chat_id}` has been reset to 0."))
     else:
-        logger.warning(f"No data found for user_id {client.me.id}.")
-        await message.edit_text("No data found for the bot user.")
+        await edit_or_reply(message, styled_error(f"No message count found for `{chat_id}`."))
 
-@Client.on_message(filters.command("addbl", prefixes=HARDCODED_PREFIXES) & filters.me)
+
+@Client.on_message(filters.command("addbl", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 @retry()
 async def add_to_blacklist(client, message):
     chat_id = message.chat.id
@@ -264,29 +346,29 @@ async def add_to_blacklist(client, message):
     user_data = user_sessions.find_one({"user_id": client.me.id})
 
     if user_data:
-        blocked_list = user_data.get('blocked_list', []) #Changed to blocked_list
-        # Escaped: the chat's own title, in a message the default parse mode
-        # reads as HTML. A group called "<Spam>" used to report as " is already
-        # in the blacklist."
+        blocked_list = user_data.get('blocked_list', [])
         chat_label = html_esc(chat.title or chat.first_name)
         if chat_id in blocked_list:
-            await message.edit_text(f"{chat_label} is already in the blacklist.")
+            await edit_or_reply(message, f"{chat_label} is already in the blacklist.")
             return
 
         user_sessions.update_one(
             {"user_id": client.me.id},
-            {"$push": {"blocked_list": chat_id}}  #Changed to blocked_list
+            {"$push": {"blocked_list": chat_id}}
         )
-        await message.edit_text(f"{chat_label} added to blacklist.")
+        invalidate_session_cache(client.me.id)
+        await edit_or_reply(message, styled_success(f"{chat_label} added to blacklist."))
 
     else:
         user_sessions.insert_one({
             "user_id": client.me.id,
-            "blocked_list": [chat_id]  #Changed to blocked_list
+            "blocked_list": [chat_id]
         })
-        await message.edit_text(f"{html_esc(chat.title or chat.first_name)} added to blacklist (new entry).")
+        invalidate_session_cache(client.me.id)
+        await edit_or_reply(message, styled_success(f"{html_esc(chat.title or chat.first_name)} added to blacklist (new entry)."))
 
-@Client.on_message(filters.command("rmbl", prefixes=HARDCODED_PREFIXES) & filters.me)
+
+@Client.on_message(filters.command("rmbl", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 @retry()
 async def remove_from_blacklist(client, message: Message):
     user_id = client.me.id
@@ -299,19 +381,20 @@ async def remove_from_blacklist(client, message: Message):
         try:
             target_chat_id = int(target_chat_id_str)
         except ValueError:
-            await message.reply("Invalid chat ID. Please provide a valid integer.")
+            await edit_or_reply(message, styled_error("Invalid chat ID. Please provide a valid integer."))
             return
         try:
             target_chat = await client.get_chat(target_chat_id)
             chat_title_or_name = target_chat.title or target_chat.first_name
-        except Exception as e:
+        except Exception:
             chat_title_or_name = None
 
         if target_chat_id in blocked_list:
             user_sessions.update_one({"user_id": user_id}, {"$pull": {"blocked_list": target_chat_id}})
-            await message.reply(f"{chat_title_or_name} removed from blacklist.")
+            invalidate_session_cache(user_id)
+            await edit_or_reply(message, styled_success(f"{chat_title_or_name or target_chat_id} removed from blacklist."))
         else:
-            await message.reply(f"{target_chat_id} not found in blacklist.")
+            await edit_or_reply(message, styled_error(f"{target_chat_id} not found in blacklist."))
 
     else:  # Remove current chat from blacklist
         chat_id = message.chat.id
@@ -319,51 +402,48 @@ async def remove_from_blacklist(client, message: Message):
             chat = await client.get_chat(chat_id)
             chat_title_or_name = chat.title or chat.first_name
         except Exception as e:
-            await message.reply(f"Error fetching chat information: {e}")
+            await edit_or_reply(message, styled_error(f"Error fetching chat information: {e}"))
             return
 
         if chat_id in blocked_list:
             user_sessions.update_one({"user_id": user_id}, {"$pull": {"blocked_list": chat_id}})
-            await message.reply(f"{chat_title_or_name} removed from blacklist.")
+            invalidate_session_cache(user_id)
+            await edit_or_reply(message, styled_success(f"{chat_title_or_name} removed from blacklist."))
         else:
-            await message.reply(f"{chat_title_or_name} not found in blacklist.")
+            await edit_or_reply(message, styled_error(f"{chat_title_or_name} not found in blacklist."))
 
-@Client.on_message(filters.command("block", prefixes=HARDCODED_PREFIXES) & filters.me)
+
+@Client.on_message(filters.command("block", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 @retry()
 async def block_user(client, message):
-    if message.reply_to_message and message.reply_to_message.from_user:
-        user_id = message.reply_to_message.from_user.id
-    else:
-        args = cmd_text(message).split(maxsplit=1)
-        if len(args) < 2:
-            return await message.edit(styled_error("Reply to a user or provide a user ID/username."))
-        try:
-            user = await client.get_users(int(args[1]) if args[1].isdigit() else args[1])
-            user_id = user.id
-        except Exception as e:
-            return await message.edit(styled_error("User not found.", details=str(e)))
+    try:
+        user_id, target_name = await _extract_target_user(client, message)
+    except Exception as e:
+        return await edit_or_reply(message, styled_error("User not found.", details=str(e)))
+
+    if not user_id:
+        return await edit_or_reply(message, styled_error("Reply to a user, provide a user ID/username, or run in a private chat."))
+
     await client.block_user(user_id)
-    await message.edit(styled_success(f"Blocked `{user_id}`."))
+    await edit_or_reply(message, styled_success(f"Blocked `{user_id}`."))
 
 
-@Client.on_message(filters.command("unblock", prefixes=HARDCODED_PREFIXES) & filters.me)
+@Client.on_message(filters.command("unblock", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 @retry()
 async def unblock_user(client, message):
-    if message.reply_to_message and message.reply_to_message.from_user:
-        user_id = message.reply_to_message.from_user.id
-    else:
-        args = cmd_text(message).split(maxsplit=1)
-        if len(args) < 2:
-            return await message.edit(styled_error("Reply to a user or provide a user ID/username."))
-        try:
-            user = await client.get_users(int(args[1]) if args[1].isdigit() else args[1])
-            user_id = user.id
-        except Exception as e:
-            return await message.edit(styled_error("User not found.", details=str(e)))
-    await client.unblock_user(user_id)
-    await message.edit(styled_success(f"Unblocked `{user_id}`."))
+    try:
+        user_id, target_name = await _extract_target_user(client, message)
+    except Exception as e:
+        return await edit_or_reply(message, styled_error("User not found.", details=str(e)))
 
-@Client.on_message(filters.command("blist", prefixes=HARDCODED_PREFIXES) & filters.me)
+    if not user_id:
+        return await edit_or_reply(message, styled_error("Reply to a user, provide a user ID/username, or run in a private chat."))
+
+    await client.unblock_user(user_id)
+    await edit_or_reply(message, styled_success(f"Unblocked `{user_id}`."))
+
+
+@Client.on_message(filters.command("blist", prefixes=HARDCODED_PREFIXES) & (filters.me | sudoers_filter()))
 @retry()
 async def show_blacklist(client, message):
     user_data = user_sessions.find_one({"user_id": client.me.id})
@@ -378,10 +458,8 @@ async def show_blacklist(client, message):
                 f"<blockquote>\n" + "\n".join(lines) + f"\n</blockquote>\n\n"
                 f"💡 <i>Use <code>.rmbl &lt;chat_id&gt;</code> to remove a chat from this list.</i>"
             )
-            await message.reply(result_html, parse_mode=enums.ParseMode.HTML)
+            await edit_or_reply(message, result_html, parse_mode=enums.ParseMode.HTML)
         else:
-            await message.reply(f"<b>🚫 Blacklist Empty</b>\n\n<blockquote>No chats or users are currently blacklisted.</blockquote>", parse_mode=enums.ParseMode.HTML)
+            await edit_or_reply(message, "<b>🚫 Blacklist Empty</b>\n\n<blockquote>No chats or users are currently blacklisted.</blockquote>", parse_mode=enums.ParseMode.HTML)
     else:
-        await message.reply("No blacklist found for this bot.")
-
-
+        await edit_or_reply(message, "No blacklist found for this bot.")
